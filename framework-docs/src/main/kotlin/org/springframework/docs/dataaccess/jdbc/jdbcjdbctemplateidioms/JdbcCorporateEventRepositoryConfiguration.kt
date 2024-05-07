@@ -23,7 +23,7 @@ import org.springframework.context.annotation.Configuration
 
 // tag::snippet[]
 @Configuration
-@ComponentScan("org.springframework.docs.dataaccess.jdbc")
+@ComponentScan("org.example.jdbc")
 class JdbcCorporateEventRepositoryConfiguration {
 
 	@Bean(destroyMethod = "close")
