@@ -14,21 +14,19 @@
  * limitations under the License.
  */
 
-package org.springframework.beans.factory.aspectj;
+package org.springframework.test.context.bean.override.example;
 
-import org.junit.jupiter.api.Test;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Inherited;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
-import org.springframework.context.support.ClassPathXmlApplicationContext;
+import org.springframework.beans.factory.annotation.Qualifier;
 
-/**
- * @author Ramnivas Laddad
- * @author Juergen Hoeller
- */
-class SpringConfiguredWithAutoProxyingTests {
-
-	@Test
-	void springConfiguredAndAutoProxyUsedTogether() {
-		new ClassPathXmlApplicationContext("org/springframework/beans/factory/aspectj/springConfigured.xml");
-	}
-
+@Target({ElementType.FIELD, ElementType.METHOD})
+@Retention(RetentionPolicy.RUNTIME)
+@Inherited
+@Qualifier
+public @interface CustomQualifier {
 }
