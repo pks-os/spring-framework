@@ -37,6 +37,8 @@ import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.CachedIntrospectionResults;
 import org.springframework.beans.factory.BeanFactory;
+import org.springframework.beans.factory.BeanFactoryInitializer;
+import org.springframework.beans.factory.BeanNotOfRequiredTypeException;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
@@ -932,6 +934,7 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	 * Finish the initialization of this context's bean factory,
 	 * initializing all remaining singleton beans.
 	 */
+	@SuppressWarnings("unchecked")
 	protected void finishBeanFactoryInitialization(ConfigurableListableBeanFactory beanFactory) {
 		// Initialize bootstrap executor for this context.
 		if (beanFactory.containsBean(BOOTSTRAP_EXECUTOR_BEAN_NAME) &&
@@ -954,10 +957,24 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 			beanFactory.addEmbeddedValueResolver(strVal -> getEnvironment().resolvePlaceholders(strVal));
 		}
 
+		// Call BeanFactoryInitializer beans early to allow for initializing specific other beans early.
+		String[] initializerNames = beanFactory.getBeanNamesForType(BeanFactoryInitializer.class, false, false);
+		for (String initializerName : initializerNames) {
+			beanFactory.getBean(initializerName, BeanFactoryInitializer.class).initialize(beanFactory);
+		}
+
 		// Initialize LoadTimeWeaverAware beans early to allow for registering their transformers early.
 		String[] weaverAwareNames = beanFactory.getBeanNamesForType(LoadTimeWeaverAware.class, false, false);
 		for (String weaverAwareName : weaverAwareNames) {
-			beanFactory.getBean(weaverAwareName, LoadTimeWeaverAware.class);
+			try {
+				beanFactory.getBean(weaverAwareName, LoadTimeWeaverAware.class);
+			}
+			catch (BeanNotOfRequiredTypeException ex) {
+				if (logger.isDebugEnabled()) {
+					logger.debug("Failed to initialize LoadTimeWeaverAware bean '" + weaverAwareName +
+							"' due to unexpected type mismatch: " + ex.getMessage());
+				}
+			}
 		}
 
 		// Stop using the temporary ClassLoader for type matching.
@@ -1212,6 +1229,11 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	 */
 	protected void onClose() {
 		// For subclasses: do nothing by default.
+	}
+
+	@Override
+	public boolean isClosed() {
+		return this.closed.get();
 	}
 
 	@Override

@@ -18,14 +18,20 @@ package org.springframework.test.json;
 
 import java.io.File;
 import java.io.InputStream;
+import java.lang.reflect.Type;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.function.Consumer;
 
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.PathNotFoundException;
-import org.assertj.core.api.AbstractStringAssert;
+import org.assertj.core.api.AbstractAssert;
+import org.assertj.core.api.AbstractObjectAssert;
+import org.assertj.core.api.AssertFactory;
 import org.assertj.core.api.AssertProvider;
+import org.assertj.core.api.Assertions;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.assertj.core.error.BasicErrorMessageFactory;
 import org.assertj.core.internal.Failures;
 
@@ -34,8 +40,12 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpInputMessage;
+import org.springframework.http.MediaType;
 import org.springframework.http.converter.GenericHttpMessageConverter;
 import org.springframework.lang.Nullable;
+import org.springframework.mock.http.MockHttpInputMessage;
 import org.springframework.util.Assert;
 
 /**
@@ -61,7 +71,7 @@ import org.springframework.util.Assert;
  * @param <SELF> the type of assertions
  */
 public abstract class AbstractJsonContentAssert<SELF extends AbstractJsonContentAssert<SELF>>
-		extends AbstractStringAssert<SELF> {
+		extends AbstractObjectAssert<SELF, JsonContent> {
 
 	private static final Failures failures = Failures.instance();
 
@@ -79,19 +89,71 @@ public abstract class AbstractJsonContentAssert<SELF extends AbstractJsonContent
 
 	/**
 	 * Create an assert for the given JSON document.
-	 * <p>Path can be converted to a value object using the given
-	 * {@linkplain GenericHttpMessageConverter JSON message converter}.
-	 * @param json the JSON document to assert
-	 * @param jsonMessageConverter the converter to use
+	 * @param actual the JSON document to assert
 	 * @param selfType the implementation type of this assert
 	 */
-	protected AbstractJsonContentAssert(@Nullable String json,
-			@Nullable GenericHttpMessageConverter<Object> jsonMessageConverter, Class<?> selfType) {
-		super(json, selfType);
-		this.jsonMessageConverter = jsonMessageConverter;
+	protected AbstractJsonContentAssert(@Nullable JsonContent actual, Class<?> selfType) {
+		super(actual, selfType);
+		this.jsonMessageConverter = (actual != null ? actual.getJsonMessageConverter() : null);
 		this.jsonLoader = new JsonLoader(null, null);
 		as("JSON content");
 	}
+
+	/**
+	 * Verify that the actual value can be converted to an instance of the
+	 * given {@code target}, and produce a new {@linkplain AbstractObjectAssert
+	 * assertion} object narrowed to that type.
+	 * @param target the {@linkplain Class type} to convert the actual value to
+	 */
+	public <T> AbstractObjectAssert<?, T> convertTo(Class<T> target) {
+		isNotNull();
+		T value = convertToTargetType(target);
+		return Assertions.assertThat(value);
+	}
+
+	/**
+	 * Verify that the actual value can be converted to an instance of the type
+	 * defined by the given {@link AssertFactory} and return a new Assert narrowed
+	 * to that type.
+	 * <p>{@link InstanceOfAssertFactories} provides static factories for all the
+	 * types supported by {@link Assertions#assertThat}. Additional factories can
+	 * be created by implementing {@link AssertFactory}.
+	 * <p>Example: <pre><code class="java">
+	 * // Check that the JSON document is an array of 3 users
+	 * assertThat(json).convertTo(InstanceOfAssertFactories.list(User.class))
+	 *         hasSize(3); // ListAssert of User
+	 * </code></pre>
+	 * @param assertFactory the {@link AssertFactory} to use to produce a narrowed
+	 * Assert for the type that it defines.
+	 */
+	public <ASSERT extends AbstractAssert<?, ?>> ASSERT convertTo(AssertFactory<?, ASSERT> assertFactory) {
+		isNotNull();
+		return assertFactory.createAssert(this::convertToTargetType);
+	}
+
+	@SuppressWarnings("unchecked")
+	private <T> T convertToTargetType(Type targetType) {
+		String json = this.actual.getJson();
+		if (this.jsonMessageConverter == null) {
+			throw new IllegalStateException(
+					"No JSON message converter available to convert %s".formatted(json));
+		}
+		try {
+			return (T) this.jsonMessageConverter.read(targetType, getClass(), fromJson(json));
+		}
+		catch (Exception ex) {
+			throw failure(new ValueProcessingFailed(json,
+					"To convert successfully to:%n  %s%nBut it failed:%n  %s%n".formatted(
+							targetType.getTypeName(), ex.getMessage())));
+		}
+	}
+
+	private HttpInputMessage fromJson(String json) {
+		MockHttpInputMessage inputMessage = new MockHttpInputMessage(json.getBytes(StandardCharsets.UTF_8));
+		inputMessage.getHeaders().add(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+		return inputMessage;
+	}
+
 
 	// JsonPath support
 
@@ -140,6 +202,19 @@ public abstract class AbstractJsonContentAssert<SELF extends AbstractJsonContent
 	}
 
 	// JsonAssert support
+
+	/**
+	 * Verify that the actual value is {@linkplain JsonCompareMode#STRICT strictly}
+	 * equal to the given JSON. The {@code expected} value can contain the JSON
+	 * itself or, if it ends with {@code .json}, the name of a resource to be
+	 * loaded from the classpath.
+	 * @param expected the expected JSON or the name of a resource containing
+	 * the expected JSON
+	 * @see #isEqualTo(CharSequence, JsonCompareMode)
+	 */
+	public SELF isEqualTo(@Nullable CharSequence expected) {
+		return isEqualTo(expected, JsonCompareMode.STRICT);
+	}
 
 	/**
 	 * Verify that the actual value is equal to the given JSON. The
@@ -255,6 +330,19 @@ public abstract class AbstractJsonContentAssert<SELF extends AbstractJsonContent
 	 */
 	public SELF isStrictlyEqualTo(Resource expected) {
 		return isEqualTo(expected, JsonCompareMode.STRICT);
+	}
+
+	/**
+	 * Verify that the actual value is {@linkplain JsonCompareMode#STRICT strictly}
+	 * not equal to the given JSON. The {@code expected} value can contain the
+	 * JSON itself or, if it ends with {@code .json}, the name of a resource to
+	 * be loaded from the classpath.
+	 * @param expected the expected JSON or the name of a resource containing
+	 * the expected JSON
+	 * @see #isNotEqualTo(CharSequence, JsonCompareMode)
+	 */
+	public SELF isNotEqualTo(@Nullable CharSequence expected) {
+		return isNotEqualTo(expected, JsonCompareMode.STRICT);
 	}
 
 	/**
@@ -399,13 +487,24 @@ public abstract class AbstractJsonContentAssert<SELF extends AbstractJsonContent
 		return this.myself;
 	}
 
+	@Nullable
+	private String toJsonString() {
+		return (this.actual != null ? this.actual.getJson() : null);
+	}
+
+	@SuppressWarnings("NullAway")
+	private String toNonNullJsonString() {
+		String jsonString = toJsonString();
+		Assertions.assertThat(jsonString).as("JSON content").isNotNull();
+		return jsonString;
+	}
 
 	private JsonComparison compare(@Nullable CharSequence expectedJson, JsonCompareMode compareMode) {
 		return compare(expectedJson, JsonAssert.comparator(compareMode));
 	}
 
 	private JsonComparison compare(@Nullable CharSequence expectedJson, JsonComparator comparator) {
-		return comparator.compare((expectedJson != null) ? expectedJson.toString() : null, this.actual);
+		return comparator.compare((expectedJson != null) ? expectedJson.toString() : null, toJsonString());
 	}
 
 	private SELF assertIsMatch(JsonComparison result) {
@@ -435,16 +534,15 @@ public abstract class AbstractJsonContentAssert<SELF extends AbstractJsonContent
 
 		private final String path;
 
-		private final JsonPath jsonPath;
-
 		private final String json;
+
+		private final JsonPath jsonPath;
 
 		JsonPathValue(String path) {
 			Assert.hasText(path, "'path' must not be null or empty");
-			isNotNull();
 			this.path = path;
+			this.json = toNonNullJsonString();
 			this.jsonPath = JsonPath.compile(this.path);
-			this.json = AbstractJsonContentAssert.this.actual;
 		}
 
 		@Nullable
@@ -489,6 +587,13 @@ public abstract class AbstractJsonContentAssert<SELF extends AbstractJsonContent
 			private JsonPathNotExpected(String actual, String path) {
 				super("%nExpecting:%n  %s%nNot to match JSON path:%n  %s%n", actual, path);
 			}
+		}
+	}
+
+	private static final class ValueProcessingFailed extends BasicErrorMessageFactory {
+
+		private ValueProcessingFailed(String actualToString, String errorMessage) {
+			super("%nExpected:%n  %s%n%s".formatted(actualToString, errorMessage));
 		}
 	}
 

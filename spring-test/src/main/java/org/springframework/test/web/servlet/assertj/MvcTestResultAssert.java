@@ -17,16 +17,17 @@
 package org.springframework.test.web.servlet.assertj;
 
 import java.io.BufferedReader;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.io.Writer;
 
 import jakarta.servlet.http.Cookie;
 import org.assertj.core.api.AbstractStringAssert;
 import org.assertj.core.api.AbstractThrowableAssert;
 import org.assertj.core.api.Assertions;
 import org.assertj.core.api.MapAssert;
-import org.assertj.core.api.ObjectAssert;
 import org.assertj.core.error.BasicErrorMessageFactory;
 import org.assertj.core.internal.Failures;
 
@@ -37,6 +38,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultHandler;
 import org.springframework.test.web.servlet.ResultMatcher;
+import org.springframework.test.web.servlet.result.MockMvcResultHandlers;
 import org.springframework.web.servlet.ModelAndView;
 
 /**
@@ -59,13 +61,13 @@ public class MvcTestResultAssert extends AbstractMockHttpServletResponseAssert<M
 	}
 
 	/**
-	 * Verify that the request failed with an unresolved exception, and
-	 * return a new {@linkplain AbstractThrowableAssert assertion} object
-	 * that uses the unresolved {@link Exception} as the object to test.
+	 * Verify that the request has failed and return a new
+	 * {@linkplain AbstractThrowableAssert assertion} object that uses the
+	 * failure as the object to test.
 	 */
-	public AbstractThrowableAssert<?, ? extends Throwable> unresolvedException() {
-		hasUnresolvedException();
-		return Assertions.assertThat(this.actual.getUnresolvedException());
+	public AbstractThrowableAssert<?, ? extends Throwable> failure() {
+		hasFailed();
+		return Assertions.assertThat(getFailure());
 	}
 
 	/**
@@ -109,7 +111,7 @@ public class MvcTestResultAssert extends AbstractMockHttpServletResponseAssert<M
 	/**
 	 * Verify that a {@link ModelAndView} is available and return a new
 	 * {@linkplain AbstractStringAssert assertion} object that uses the
-	 * {@linkplain ModelAndView#getViewName()} view name} as the object to test.
+	 * {@linkplain ModelAndView#getViewName() view name} as the object to test.
 	 * @see #hasViewName(String)
 	 */
 	public AbstractStringAssert<?> viewName() {
@@ -126,31 +128,49 @@ public class MvcTestResultAssert extends AbstractMockHttpServletResponseAssert<M
 	}
 
 	/**
-	 * Verify that {@linkplain AbstractHttpServletRequestAssert#hasAsyncStarted(boolean)
-	 * asynchronous processing has started} and return a new
-	 * {@linkplain ObjectAssert assertion} object that uses the asynchronous
-	 * result as the object to test.
+	 * Print {@link MvcResult} details to {@code System.out}.
+	 * <p>You must call it <b>before</b> calling the assertion otherwise it is ignored
+	 * as the failing assertion breaks the chained call by throwing an
+	 * AssertionError.
 	 */
-	public ObjectAssert<Object> asyncResult() {
-		request().hasAsyncStarted(true);
-		return Assertions.assertThat(getMvcResult().getAsyncResult()).as("Async result");
+	public MvcTestResultAssert debug() {
+		return debug(System.out);
 	}
 
 	/**
-	 * Verify that the request failed with an unresolved exception.
-	 * @see #unresolvedException()
+	 * Print {@link MvcResult} details to the supplied {@link OutputStream}.
+	 * <p>You must call it <b>before</b> calling the assertion otherwise it is ignored
+	 * as the failing assertion breaks the chained call by throwing an
+	 * AssertionError.
 	 */
-	public MvcTestResultAssert hasUnresolvedException() {
-		Assertions.assertThat(this.actual.getUnresolvedException())
+	public MvcTestResultAssert debug(OutputStream stream) {
+		return apply(MockMvcResultHandlers.print(stream));
+	}
+
+	/**
+	 * Print {@link MvcResult} details to the supplied {@link Writer}.
+	 * <p>You must call it <b>before</b> calling the assertion otherwise it is ignored
+	 * as the failing assertion breaks the chained call by throwing an
+	 * AssertionError.
+	 */
+	public MvcTestResultAssert debug(Writer writer) {
+		return apply(MockMvcResultHandlers.print(writer));
+	}
+
+	/**
+	 * Verify that the request has failed.
+	 */
+	public MvcTestResultAssert hasFailed() {
+		Assertions.assertThat(getFailure())
 				.withFailMessage("Expected request to fail, but it succeeded").isNotNull();
 		return this;
 	}
 
 	/**
-	 * Verify that the request did not fail with an unresolved exception.
+	 * Verify that the request has not failed.
 	 */
-	public MvcTestResultAssert doesNotHaveUnresolvedException() {
-		Assertions.assertThat(this.actual.getUnresolvedException())
+	public MvcTestResultAssert doesNotHaveFailed() {
+		Assertions.assertThat(getFailure())
 				.withFailMessage("Expected request to succeed, but it failed").isNull();
 		return this;
 	}
@@ -184,6 +204,14 @@ public class MvcTestResultAssert extends AbstractMockHttpServletResponseAssert<M
 		return this.myself;
 	}
 
+	@Nullable
+	private Throwable getFailure() {
+		Exception unresolvedException = this.actual.getUnresolvedException();
+		if (unresolvedException != null) {
+			return unresolvedException;
+		}
+		return this.actual.getMvcResult().getResolvedException();
+	}
 
 	@SuppressWarnings("NullAway")
 	private ModelAndView getModelAndView() {
