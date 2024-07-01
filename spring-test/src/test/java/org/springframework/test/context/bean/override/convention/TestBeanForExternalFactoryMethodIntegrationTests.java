@@ -20,22 +20,21 @@ import org.junit.jupiter.api.Test;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.test.context.bean.override.example.TestBeanFactory;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration tests for {@link TestBean} that use bean factory methods defined
- * in implemented interfaces.
+ * in external classes.
  *
  * @author Sam Brannen
  * @since 6.2
  */
 @SpringJUnitConfig
-class TestBeanForInterfaceIntegrationTests implements TestBeanFactory {
+class TestBeanForExternalFactoryMethodIntegrationTests {
 
-	@TestBean(methodName = "createTestMessage")
+	@TestBean(methodName = "org.springframework.test.context.bean.override.example.TestBeanFactory#createTestMessage")
 	String message;
 
 
