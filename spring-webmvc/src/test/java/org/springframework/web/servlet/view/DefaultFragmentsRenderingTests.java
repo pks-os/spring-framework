@@ -17,7 +17,6 @@
 package org.springframework.web.servlet.view;
 
 import java.util.Collections;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -28,7 +27,6 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.support.ResourceBundleMessageSource;
-import org.springframework.web.servlet.ModelAndView;
 import org.springframework.web.servlet.view.script.ScriptTemplateConfigurer;
 import org.springframework.web.servlet.view.script.ScriptTemplateViewResolver;
 import org.springframework.web.testfixture.servlet.MockHttpServletRequest;
@@ -38,12 +36,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.condition.JRE.JAVA_21;
 
 /**
- * Tests for rendering through {@link FragmentsView}.
+ * Tests for rendering through {@link DefaultFragmentsRendering}.
  *
  * @author Rossen Stoyanchev
  */
 @DisabledForJreRange(min = JAVA_21, disabledReason = "Kotlin doesn't support Java 21+ yet")
-public class FragmentsViewTests {
+public class DefaultFragmentsRenderingTests {
 
 
 	@Test
@@ -59,9 +57,9 @@ public class FragmentsViewTests {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		MockHttpServletResponse response = new MockHttpServletResponse();
 
-		FragmentsView view = FragmentsView.create(List.of(
-				new ModelAndView("fragment1", Map.of("foo", "Foo")),
-				new ModelAndView("fragment2", Map.of("bar", "Bar"))));
+		FragmentsRendering view = FragmentsRendering.with("fragment1", Map.of("foo", "Foo"))
+				.fragment("fragment2", Map.of("bar", "Bar"))
+				.build();
 
 		view.resolveNestedViews(viewResolver, Locale.ENGLISH);
 		view.render(Collections.emptyMap(), request, response);

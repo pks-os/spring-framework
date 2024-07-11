@@ -17,6 +17,7 @@
 package org.springframework.web.reactive.result.view;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -154,22 +155,40 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 			return true;
 		}
 
-		Class<?> type = result.getReturnType().toClass();
+		ResolvableType returnType = result.getReturnType();
+		Class<?> type = returnType.toClass();
+
 		ReactiveAdapter adapter = getAdapter(result);
 		if (adapter != null) {
 			if (adapter.isNoValue()) {
 				return true;
 			}
-			type = result.getReturnType().getGeneric().toClass();
+
+			type = returnType.getGeneric().toClass();
+			returnType = returnType.getNested(2);
+
+			if (adapter.isMultiValue()) {
+				return Fragment.class.isAssignableFrom(type);
+			}
 		}
 
 		return (CharSequence.class.isAssignableFrom(type) ||
 				Rendering.class.isAssignableFrom(type) ||
-				FragmentRendering.class.isAssignableFrom(type) ||
+				FragmentsRendering.class.isAssignableFrom(type) ||
 				Model.class.isAssignableFrom(type) ||
 				Map.class.isAssignableFrom(type) ||
 				View.class.isAssignableFrom(type) ||
+				isFragmentCollection(returnType.getNested(2)) ||
 				!BeanUtils.isSimpleProperty(type));
+	}
+
+	private boolean hasModelAnnotation(MethodParameter parameter) {
+		return parameter.hasMethodAnnotation(ModelAttribute.class);
+	}
+
+	private static boolean isFragmentCollection(ResolvableType returnType) {
+		Class<?> clazz = returnType.resolve(Object.class);
+		return (Collection.class.isAssignableFrom(clazz) && Fragment.class.equals(returnType.getNested(2).resolve()));
 	}
 
 	@Override
@@ -181,14 +200,19 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 
 		if (adapter != null) {
 			if (adapter.isMultiValue()) {
-				throw new IllegalArgumentException("Multi-value producer: " + result.getReturnType());
+				valueMono = (result.getReturnValue() != null ?
+						Mono.just(FragmentsRendering.withPublisher(adapter.toPublisher(result.getReturnValue())).build()) :
+						Mono.empty());
+
+				valueType = ResolvableType.forClass(FragmentsRendering.class);
 			}
+			else {
+				valueMono = (result.getReturnValue() != null ?
+						Mono.from(adapter.toPublisher(result.getReturnValue())) : Mono.empty());
 
-			valueMono = (result.getReturnValue() != null ?
-					Mono.from(adapter.toPublisher(result.getReturnValue())) : Mono.empty());
-
-			valueType = (adapter.isNoValue() ? ResolvableType.forClass(Void.class) :
-					result.getReturnType().getGeneric());
+				valueType = (adapter.isNoValue() ? ResolvableType.forClass(Void.class) :
+						result.getReturnType().getGeneric());
+			}
 		}
 		else {
 			valueMono = Mono.justOrEmpty(result.getReturnValue());
@@ -208,6 +232,11 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 					Class<?> clazz = valueType.toClass();
 					if (clazz == Object.class) {
 						clazz = returnValue.getClass();
+					}
+
+					if (Collection.class.isAssignableFrom(clazz)) {
+						returnValue = FragmentsRendering.withCollection((Collection<Fragment>) returnValue).build();
+						clazz = FragmentsRendering.class;
 					}
 
 					if (returnValue == NO_VALUE || ClassUtils.isVoidType(clazz)) {
@@ -231,8 +260,8 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 						viewsMono = (view instanceof String viewName ? resolveViews(viewName, locale) :
 								Mono.just(Collections.singletonList((View) view)));
 					}
-					else if (FragmentRendering.class.isAssignableFrom(clazz)) {
-						FragmentRendering render = (FragmentRendering) returnValue;
+					else if (FragmentsRendering.class.isAssignableFrom(clazz)) {
+						FragmentsRendering render = (FragmentsRendering) returnValue;
 						HttpStatusCode status = render.status();
 						if (status != null) {
 							exchange.getResponse().setStatusCode(status);
@@ -264,10 +293,6 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 					bindingContext.updateModel(exchange);
 					return viewsMono.flatMap(views -> render(views, model.asMap(), bindingContext, exchange));
 				});
-	}
-
-	private boolean hasModelAnnotation(MethodParameter parameter) {
-		return parameter.hasMethodAnnotation(ModelAttribute.class);
 	}
 
 	/**
@@ -303,7 +328,7 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 			Fragment fragment, Locale locale, BindingContext bindingContext, ServerWebExchange exchange) {
 
 		// Merge attributes from top-level model
-		bindingContext.getModel().asMap().forEach((key, value) -> fragment.model().putIfAbsent(key, value));
+		fragment.mergeAttributes(bindingContext.getModel());
 
 		BodySavingResponse response = new BodySavingResponse(exchange.getResponse());
 		ServerWebExchange mutatedExchange = exchange.mutate().response(response).build();

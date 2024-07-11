@@ -79,8 +79,13 @@ class ViewResolutionResultHandlerTests {
 		testSupports(on(Handler.class).resolveReturnType(Mono.class, String.class));
 
 		testSupports(on(Handler.class).resolveReturnType(Rendering.class));
-		testSupports(on(Handler.class).resolveReturnType(FragmentRendering.class));
 		testSupports(on(Handler.class).resolveReturnType(Mono.class, Rendering.class));
+
+		testSupports(on(Handler.class).resolveReturnType(FragmentsRendering.class));
+		testSupports(on(Handler.class).resolveReturnType(Flux.class, Fragment.class));
+		testSupports(on(Handler.class).resolveReturnType(List.class, Fragment.class));
+		testSupports(on(Handler.class).resolveReturnType(
+				Mono.class, ResolvableType.forClassWithGenerics(List.class, Fragment.class)));
 
 		testSupports(on(Handler.class).resolveReturnType(View.class));
 		testSupports(on(Handler.class).resolveReturnType(Mono.class, View.class));
@@ -435,7 +440,10 @@ class ViewResolutionResultHandlerTests {
 		Rendering rendering() { return null; }
 		Mono<Rendering> monoRendering() { return null; }
 
-		FragmentRendering fragmentRendering() { return null; }
+		FragmentsRendering fragmentsRendering() { return null; }
+		Flux<Fragment> fragmentFlux() { return null; }
+		Mono<List<Fragment>> monoFragmentList() { return null; }
+		List<Fragment> fragmentList() { return null; }
 
 		View view() { return null; }
 		Mono<View> monoView() { return null; }

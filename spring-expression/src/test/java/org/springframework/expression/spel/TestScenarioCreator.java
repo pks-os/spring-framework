@@ -100,6 +100,16 @@ class TestScenarioCreator {
 		MethodHandle messageStaticFullyBound = messageStaticPartiallyBound
 				.bindTo(new String[] { "prerecorded", "3", "Oh Hello World", "ignored"});
 		testContext.registerFunction("messageStaticBound", messageStaticFullyBound);
+
+		// #formatObjectVarargs(format, args...)
+		MethodHandle formatObjectVarargs = MethodHandles.lookup().findStatic(TestScenarioCreator.class,
+				"formatObjectVarargs", MethodType.methodType(String.class, String.class, Object[].class));
+		testContext.registerFunction("formatObjectVarargs", formatObjectVarargs);
+
+		// #add(int, int)
+		MethodHandle add = MethodHandles.lookup().findStatic(TestScenarioCreator.class,
+				"add", MethodType.methodType(int.class, int.class, int.class));
+		testContext.registerFunction("add", add);
 	}
 
 	/**
@@ -152,6 +162,14 @@ class TestScenarioCreator {
 
 	public static String message(String template, String... args) {
 		return template.formatted((Object[]) args);
+	}
+
+	public static String formatObjectVarargs(String format, Object... args) {
+		return String.format(format, args);
+	}
+
+	public static int add(int x, int y) {
+		return x + y;
 	}
 
 }

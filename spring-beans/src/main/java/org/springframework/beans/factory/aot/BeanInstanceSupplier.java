@@ -213,13 +213,7 @@ public final class BeanInstanceSupplier<T> extends AutowiredElementResolver impl
 		if (!(executable instanceof Method method)) {
 			return beanSupplier.get();
 		}
-		try {
-			SimpleInstantiationStrategy.setCurrentlyInvokedFactoryMethod(method);
-			return beanSupplier.get();
-		}
-		finally {
-			SimpleInstantiationStrategy.setCurrentlyInvokedFactoryMethod(null);
-		}
+		return SimpleInstantiationStrategy.instantiateWithFactoryMethod(method, beanSupplier::get);
 	}
 
 	@Nullable

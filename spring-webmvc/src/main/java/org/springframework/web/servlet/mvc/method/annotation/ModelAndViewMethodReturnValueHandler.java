@@ -18,8 +18,12 @@ package org.springframework.web.servlet.mvc.method.annotation;
 
 import java.util.Collection;
 
+import jakarta.servlet.http.HttpServletResponse;
+
 import org.springframework.core.MethodParameter;
+import org.springframework.http.HttpHeaders;
 import org.springframework.lang.Nullable;
+import org.springframework.util.Assert;
 import org.springframework.util.PatternMatchUtils;
 import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.method.support.HandlerMethodReturnValueHandler;
@@ -27,7 +31,7 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 import org.springframework.web.servlet.ModelAndView;
 import org.springframework.web.servlet.SmartView;
 import org.springframework.web.servlet.View;
-import org.springframework.web.servlet.view.FragmentsView;
+import org.springframework.web.servlet.view.FragmentsRendering;
 
 /**
  * Handles return values of type {@link ModelAndView} copying view and model
@@ -78,7 +82,7 @@ public class ModelAndViewMethodReturnValueHandler implements HandlerMethodReturn
 		if (Collection.class.isAssignableFrom(type)) {
 			type = returnType.nested().getNestedParameterType();
 		}
-		return ModelAndView.class.isAssignableFrom(type);
+		return (ModelAndView.class.isAssignableFrom(type) || FragmentsRendering.class.isAssignableFrom(type));
 	}
 
 	@SuppressWarnings("unchecked")
@@ -92,7 +96,18 @@ public class ModelAndViewMethodReturnValueHandler implements HandlerMethodReturn
 		}
 
 		if (returnValue instanceof Collection<?> mavs) {
-			mavContainer.setView(FragmentsView.create((Collection<ModelAndView>) mavs));
+			returnValue = FragmentsRendering.with((Collection<ModelAndView>) mavs).build();
+		}
+
+		if (returnValue instanceof FragmentsRendering rendering) {
+			mavContainer.setStatus(rendering.status());
+			HttpHeaders headers = rendering.headers();
+			if (!headers.isEmpty()) {
+				HttpServletResponse response = webRequest.getNativeResponse(HttpServletResponse.class);
+				Assert.state(response != null, "No HttpServletResponse");
+				headers.forEach((name, values) -> values.forEach(value -> response.addHeader(name, value)));
+			}
+			mavContainer.setView(rendering);
 			return;
 		}
 
