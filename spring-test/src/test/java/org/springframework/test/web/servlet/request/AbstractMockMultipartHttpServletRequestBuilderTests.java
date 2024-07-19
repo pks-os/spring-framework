@@ -16,6 +16,7 @@
 
 package org.springframework.test.web.servlet.request;
 
+import jakarta.servlet.ServletContext;
 import jakarta.servlet.http.Part;
 import org.junit.jupiter.api.Test;
 
@@ -31,10 +32,13 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests for {@link MockMultipartHttpServletRequestBuilder}.
- * @author Rossen Stoyanchev
+ * Tests for {@link AbstractMockMultipartHttpServletRequestBuilder}.
+ *
+ * @author Stephane Nicoll
  */
-public class MockMultipartHttpServletRequestBuilderTests {
+public class AbstractMockMultipartHttpServletRequestBuilderTests {
+
+	private final ServletContext servletContext = new MockServletContext();
 
 	@Test // gh-26166
 	void addFileAndParts() throws Exception {
@@ -73,17 +77,33 @@ public class MockMultipartHttpServletRequestBuilderTests {
 		Object result = createBuilder("/fileUpload").merge(parent);
 
 		assertThat(result).isNotNull();
-		assertThat(result.getClass()).isEqualTo(MockMultipartHttpServletRequestBuilder.class);
+		assertThat(result.getClass()).isEqualTo(TestRequestBuilder.class);
 
-		MockMultipartHttpServletRequestBuilder builder = (MockMultipartHttpServletRequestBuilder) result;
+		TestRequestBuilder builder = (TestRequestBuilder) result;
 		MockHttpServletRequest request = builder.buildRequest(new MockServletContext());
 		assertThat(request.getCharacterEncoding()).isEqualTo("UTF-8");
 	}
 
-	private MockMultipartHttpServletRequestBuilder createBuilder(String uri) {
-		MockMultipartHttpServletRequestBuilder builder = new MockMultipartHttpServletRequestBuilder();
-		builder.uri(uri);
-		return builder;
+
+	@Test
+	void builderSetsRequestContentType() {
+		MockHttpServletRequest request = buildRequest(createBuilder("/upload"));
+		assertThat(request.getContentType()).isEqualTo(MediaType.MULTIPART_FORM_DATA_VALUE);
 	}
 
+	private TestRequestBuilder createBuilder(String uri) {
+		return new TestRequestBuilder(HttpMethod.POST).uri(uri);
+	}
+
+	private MockHttpServletRequest buildRequest(AbstractMockHttpServletRequestBuilder<?> builder) {
+		return builder.buildRequest(this.servletContext);
+	}
+
+
+	private static class TestRequestBuilder extends AbstractMockMultipartHttpServletRequestBuilder<TestRequestBuilder> {
+
+		TestRequestBuilder(HttpMethod httpMethod) {
+			super(httpMethod);
+		}
+	}
 }
