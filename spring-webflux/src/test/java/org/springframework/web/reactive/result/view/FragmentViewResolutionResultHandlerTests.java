@@ -22,6 +22,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Stream;
 
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -54,25 +55,21 @@ import static org.springframework.web.testfixture.method.ResolvableMethod.on;
  */
 public class FragmentViewResolutionResultHandlerTests {
 
+	private static final Fragment fragment1 = Fragment.create("fragment1", Map.of("foo", "Foo"));
+
+	private static final Fragment fragment2 = Fragment.create("fragment2", Map.of("bar", "Bar"));
+
+
 	static Stream<Arguments> arguments() {
-		Fragment f1 = Fragment.create("fragment1", Map.of("foo", "Foo"));
-		Fragment f2 = Fragment.create("fragment2", Map.of("bar", "Bar"));
+		Flux<Fragment> fragmentFlux = Flux.just(fragment1, fragment2).subscribeOn(Schedulers.boundedElastic());
 		return Stream.of(
-				Arguments.of(
-						FragmentsRendering.withPublisher(Flux.just(f1, f2).subscribeOn(Schedulers.boundedElastic()))
-								.headers(headers -> headers.setContentType(MediaType.TEXT_HTML))
-								.build(),
+				Arguments.of(FragmentsRendering.withPublisher(fragmentFlux).build(),
 						on(Handler.class).resolveReturnType(FragmentsRendering.class)),
-				Arguments.of(
-						FragmentsRendering.withCollection(List.of(f1, f2))
-								.headers(headers -> headers.setContentType(MediaType.TEXT_HTML))
-								.build(),
+				Arguments.of(FragmentsRendering.withCollection(List.of(fragment1, fragment2)).build(),
 						on(Handler.class).resolveReturnType(FragmentsRendering.class)),
-				Arguments.of(
-						Flux.just(f1, f2).subscribeOn(Schedulers.boundedElastic()),
+				Arguments.of(fragmentFlux,
 						on(Handler.class).resolveReturnType(Flux.class, Fragment.class)),
-				Arguments.of(
-						List.of(f1, f2),
+				Arguments.of(List.of(fragment1, fragment2),
 						on(Handler.class).resolveReturnType(List.class, Fragment.class)));
 	}
 
@@ -93,6 +90,35 @@ public class FragmentViewResolutionResultHandlerTests {
 		assertThat(body).isEqualTo("<p>Hello Foo</p><p>Hello Bar</p>");
 	}
 
+	@Test
+	void renderSse() {
+		MockServerHttpRequest request = MockServerHttpRequest.get("/")
+				.accept(MediaType.TEXT_EVENT_STREAM)
+				.acceptLanguageAsLocales(Locale.ENGLISH)
+				.build();
+
+		MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+		HandlerResult result = new HandlerResult(
+				new Handler(),
+				Flux.just(fragment1, fragment2).subscribeOn(Schedulers.boundedElastic()),
+				on(Handler.class).resolveReturnType(Flux.class, Fragment.class),
+				new BindingContext());
+
+		String body = initHandler().handleResult(exchange, result)
+				.then(Mono.defer(() -> exchange.getResponse().getBodyAsString()))
+				.block(Duration.ofSeconds(60));
+
+		assertThat(body).isEqualTo("""
+				event:fragment1
+				data:<p>Hello Foo</p>
+
+				event:fragment2
+				data:<p>Hello Bar</p>
+
+				""");
+	}
+
 	private ViewResolutionResultHandler initHandler() {
 
 		AnnotationConfigApplicationContext context =
@@ -101,20 +127,21 @@ public class FragmentViewResolutionResultHandlerTests {
 		String prefix = "org/springframework/web/reactive/result/view/script/kotlin/";
 		ScriptTemplateViewResolver viewResolver = new ScriptTemplateViewResolver(prefix, ".kts");
 		viewResolver.setApplicationContext(context);
+		viewResolver.setSupportedMediaTypes(List.of(MediaType.TEXT_HTML, MediaType.TEXT_EVENT_STREAM));
 
 		RequestedContentTypeResolver contentTypeResolver = new HeaderContentTypeResolver();
 		return new ViewResolutionResultHandler(List.of(viewResolver), contentTypeResolver);
 	}
 
 
-	@SuppressWarnings("unused")
+	@SuppressWarnings({"unused", "DataFlowIssue"})
 	private static class Handler {
 
-		FragmentsRendering rendering() { return null; }
+		FragmentsRendering render() { return null; }
 
-		Flux<Fragment> fragmentFlux() { return null; }
+		Flux<Fragment> renderFlux() { return null; }
 
-		List<Fragment> fragmentList() { return null; }
+		List<Fragment> renderList() { return null; }
 
 	}
 
