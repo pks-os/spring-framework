@@ -16,11 +16,11 @@
 
 package org.springframework.expression.spel;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
+import org.springframework.expression.spel.support.StandardTypeLocator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
@@ -199,19 +199,44 @@ class VariableAndFunctionTests extends AbstractExpressionTests {
 		evaluate("#formatPrimitiveVarargs('x -> %s %s %s', new String[]{'1', '2', '3'})", "x -> 1 2 3", String.class); // String[] to int[]
 	}
 
-	@Disabled("Primitive array to Object[] conversion is not currently supported")
 	@Test
 	void functionFromMethodWithVarargsAndPrimitiveArrayToObjectArrayConversion() {
 		evaluate("#varargsObjectFunction(new short[]{1, 2, 3})", "[1, 2, 3]", String.class); // short[] to Object[]
 		evaluate("#varargsObjectFunction(new int[]{1, 2, 3})", "[1, 2, 3]", String.class); // int[] to Object[]
 	}
 
-	@Disabled("Primitive array to Object[] conversion is not currently supported")
 	@Test
 	void functionFromMethodHandleWithVarargsAndPrimitiveArrayToObjectArrayConversion() {
 		evaluate("#message('x -> %s %s %s', new short[]{1, 2, 3})", "x -> 1 2 3", String.class);  // short[] to Object[]
 		evaluate("#message('x -> %s %s %s', new int[]{1, 2, 3})", "x -> 1 2 3", String.class); // int[] to Object[]
 		evaluate("#formatObjectVarargs('x -> %s %s %s', new int[]{1, 2, 3})", "x -> 1 2 3", String.class); // int[] to Object[]
+	}
+
+	@Test  // gh-33315
+	void functionFromMethodWithListConvertedToVarargsArray() {
+		((StandardTypeLocator) context.getTypeLocator()).registerImport("java.util");
+		String expected = "[a, b, c]";
+
+		evaluate("#varargsFunction(T(List).of('a', 'b', 'c'))", expected, String.class);
+		evaluate("#varargsFunction({'a', 'b', 'c'})", expected, String.class);
+
+		// Calling 'public String formatObjectVarargs(String format, Object... args)' -> String.format(format, args)
+		evaluate("#varargsObjectFunction(T(List).of('a', 'b', 'c'))", expected, String.class);
+		evaluate("#varargsObjectFunction({'a', 'b', 'c'})", expected, String.class);
+	}
+
+	@Test  // gh-33315
+	void functionFromMethodHandleWithListConvertedToVarargsArray() {
+		((StandardTypeLocator) context.getTypeLocator()).registerImport("java.util");
+		String expected = "x -> a b c";
+
+		// Calling 'public static String message(String template, String... args)' -> template.formatted((Object[]) args)
+		evaluate("#message('x -> %s %s %s', T(List).of('a', 'b', 'c'))", expected, String.class);
+		evaluate("#message('x -> %s %s %s', {'a', 'b', 'c'})", expected, String.class);
+
+		// Calling 'public static String formatObjectVarargs(String format, Object... args)' -> String.format(format, args)
+		evaluate("#formatObjectVarargs('x -> %s %s %s', T(List).of('a', 'b', 'c'))", expected, String.class);
+		evaluate("#formatObjectVarargs('x -> %s %s %s', {'a', 'b', 'c'})", expected, String.class);
 	}
 
 	@Test
