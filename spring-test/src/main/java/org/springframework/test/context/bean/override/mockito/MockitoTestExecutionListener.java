@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,9 +21,11 @@ import java.lang.reflect.Field;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-import org.mockito.Captor;
-import org.mockito.MockitoAnnotations;
+import org.mockito.Mockito;
+import org.mockito.MockitoSession;
+import org.mockito.quality.Strictness;
 
+import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.test.context.TestContext;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DependencyInjectionTestExecutionListener;
@@ -32,10 +34,14 @@ import org.springframework.util.ReflectionUtils;
 import org.springframework.util.ReflectionUtils.FieldCallback;
 
 /**
- * {@code TestExecutionListener} that enables {@link MockitoBean @MockitoBean} and
- * {@link MockitoSpyBean @MockitoSpyBean} support. Also triggers
- * {@link MockitoAnnotations#openMocks(Object)} when any Mockito annotations are
- * used, primarily to support {@link Captor @Captor} annotations.
+ * {@code TestExecutionListener} that enables {@link MockitoBean @MockitoBean}
+ * and {@link MockitoSpyBean @MockitoSpyBean} support. Also triggers Mockito
+ * setup of a {@link Mockito#mockitoSession() session} for each test class that
+ * uses these annotations (or any annotation in that package).
+ *
+ * <p>The {@link MockitoSession#setStrictness(Strictness) strictness} of the
+ * session defaults to {@link Strictness#STRICT_STUBS}. Use
+ * {@link MockitoBeanSettings} to specify a different strictness.
  *
  * <p>The automatic reset support for {@code @MockBean} and {@code @SpyBean} is
  * handled by the {@link MockitoResetTestExecutionListener}.
@@ -97,37 +103,65 @@ public class MockitoTestExecutionListener extends AbstractTestExecutionListener 
 	private void initMocks(TestContext testContext) {
 		if (hasMockitoAnnotations(testContext)) {
 			Object testInstance = testContext.getTestInstance();
-			testContext.setAttribute(MOCKS_ATTRIBUTE_NAME, MockitoAnnotations.openMocks(testInstance));
+			MockitoBeanSettings annotation = AnnotationUtils.findAnnotation(testInstance.getClass(),
+					MockitoBeanSettings.class);
+			testContext.setAttribute(MOCKS_ATTRIBUTE_NAME, initMockitoSession(testInstance,
+					annotation != null ? annotation.value() : Strictness.STRICT_STUBS));
 		}
+	}
+
+	private MockitoSession initMockitoSession(Object testInstance, Strictness strictness) {
+		return Mockito.mockitoSession()
+				.initMocks(testInstance)
+				.strictness(strictness)
+				.startMocking();
 	}
 
 	private void closeMocks(TestContext testContext) throws Exception {
 		Object mocks = testContext.getAttribute(MOCKS_ATTRIBUTE_NAME);
-		if (mocks instanceof AutoCloseable closeable) {
-			closeable.close();
+		if (mocks instanceof MockitoSession session) {
+			session.finishMocking();
 		}
 	}
 
 	private boolean hasMockitoAnnotations(TestContext testContext) {
 		MockitoAnnotationCollector collector = new MockitoAnnotationCollector();
-		ReflectionUtils.doWithFields(testContext.getTestClass(), collector);
+		collector.collect(testContext.getTestClass());
 		return collector.hasAnnotations();
 	}
 
 
 	/**
-	 * {@link FieldCallback} that collects Mockito annotations.
+	 * Utility class that collects {@code org.mockito} annotations and the
+	 * annotations in this package (like {@link MockitoBeanSettings}).
 	 */
 	private static final class MockitoAnnotationCollector implements FieldCallback {
 
+		private static final String MOCKITO_BEAN_PACKAGE = MockitoBean.class.getPackageName();
+
+		private static final String ORG_MOCKITO_PACKAGE = "org.mockito";
+
 		private final Set<Annotation> annotations = new LinkedHashSet<>();
+
+		public void collect(Class<?> clazz) {
+			ReflectionUtils.doWithFields(clazz, this);
+			for (Annotation annotation : clazz.getAnnotations()) {
+				collect(annotation);
+			}
+		}
 
 		@Override
 		public void doWith(Field field) throws IllegalArgumentException {
 			for (Annotation annotation : field.getAnnotations()) {
-				if (annotation.annotationType().getPackageName().startsWith("org.mockito")) {
-					this.annotations.add(annotation);
-				}
+				collect(annotation);
+			}
+		}
+
+		private void collect(Annotation annotation) {
+			String packageName = annotation.annotationType().getPackageName();
+			if (packageName.startsWith(MOCKITO_BEAN_PACKAGE) ||
+					packageName.startsWith(ORG_MOCKITO_PACKAGE)) {
+				this.annotations.add(annotation);
 			}
 		}
 
