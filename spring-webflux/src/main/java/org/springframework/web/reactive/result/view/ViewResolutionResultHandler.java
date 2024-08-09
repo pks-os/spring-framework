@@ -41,6 +41,7 @@ import org.springframework.core.ResolvableType;
 import org.springframework.core.annotation.AnnotationAwareOrderComparator;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferFactory;
+import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
@@ -100,7 +101,7 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 
 	private final List<View> defaultViews = new ArrayList<>(4);
 
-	private final List<FragmentFormatter> fragmentFormatters = List.of(new SseFragmentFormatter());
+	private final List<StreamHandler> streamHandlers = List.of(new SseStreamHandler());
 
 
 	/**
@@ -267,18 +268,25 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 								Mono.just(Collections.singletonList((View) view)));
 					}
 					else if (FragmentsRendering.class.isAssignableFrom(clazz)) {
+						ServerHttpResponse response = exchange.getResponse();
 						FragmentsRendering render = (FragmentsRendering) returnValue;
 						HttpStatusCode status = render.status();
 						if (status != null) {
-							exchange.getResponse().setStatusCode(status);
+							response.setStatusCode(status);
 						}
-						exchange.getResponse().getHeaders().putAll(render.headers());
-
+						response.getHeaders().putAll(render.headers());
 						bindingContext.updateModel(exchange);
-						Flux<Flux<DataBuffer>> renderFlux = render.fragments()
-								.concatMap(fragment -> renderFragment(fragment, locale, bindingContext, exchange));
 
-						return exchange.getResponse().writeAndFlushWith(renderFlux);
+						StreamHandler streamHandler = getStreamHandler(exchange);
+						if (streamHandler != null) {
+							streamHandler.updateResponse(exchange);
+						}
+
+						Flux<Flux<DataBuffer>> renderFlux = render.fragments()
+								.concatMap(fragment -> renderFragment(fragment, streamHandler, locale, bindingContext, exchange))
+								.doOnDiscard(DataBuffer.class, DataBufferUtils::release);
+
+						return response.writeAndFlushWith(renderFlux);
 					}
 					else if (Model.class.isAssignableFrom(clazz)) {
 						model.addAllAttributes(((Model) returnValue).asMap());
@@ -297,7 +305,7 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 						viewsMono = resolveViews(getDefaultViewName(exchange), locale);
 					}
 					bindingContext.updateModel(exchange);
-					return viewsMono.flatMap(views -> render(views, model.asMap(), bindingContext, exchange));
+					return viewsMono.flatMap(views -> render(views, model.asMap(), null, bindingContext, exchange));
 				});
 	}
 
@@ -331,7 +339,8 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 	}
 
 	private Mono<Flux<DataBuffer>> renderFragment(
-			Fragment fragment, Locale locale, BindingContext bindingContext, ServerWebExchange exchange) {
+			Fragment fragment, @Nullable StreamHandler streamHandler, Locale locale,
+			BindingContext bindingContext, ServerWebExchange exchange) {
 
 		// Merge attributes from top-level model
 		fragment.mergeAttributes(bindingContext.getModel());
@@ -343,19 +352,23 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 				Mono.just(List.of(fragment.view())) :
 				resolveViews(fragment.viewName() != null ? fragment.viewName() : getDefaultViewName(exchange), locale));
 
-		FragmentFormatter fragmentFormatter = getFragmentFormatter(exchange);
+		Map<String, Object> model = fragment.model();
 
-		return selectedViews.flatMap(views -> render(views, fragment.model(), bindingContext, mutatedExchange))
-				.then(Mono.fromSupplier(() -> (fragmentFormatter != null ?
-						fragmentFormatter.format(response.getBodyFlux(), fragment, exchange) :
-						response.getBodyFlux())));
+		if (streamHandler != null) {
+			return selectedViews.flatMap(views -> render(views, model, MediaType.TEXT_HTML, bindingContext, mutatedExchange))
+					.then(Mono.fromSupplier(() -> streamHandler.format(response.getBodyFlux(), fragment, exchange)));
+		}
+		else {
+			return selectedViews.flatMap(views -> render(views, model, null, bindingContext, mutatedExchange))
+					.then(Mono.fromSupplier(response::getBodyFlux));
+		}
 	}
 
 	@Nullable
-	private FragmentFormatter getFragmentFormatter(ServerWebExchange exchange) {
-		for (FragmentFormatter formatter : this.fragmentFormatters) {
-			if (formatter.supports(exchange.getRequest())) {
-				return formatter;
+	private StreamHandler getStreamHandler(ServerWebExchange exchange) {
+		for (StreamHandler handler : this.streamHandlers) {
+			if (handler.supports(exchange.getRequest())) {
+				return handler;
 			}
 		}
 		return null;
@@ -368,7 +381,8 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 				.orElseGet(() -> Conventions.getVariableNameForParameter(returnType));
 	}
 
-	private Mono<? extends Void> render(List<View> views, Map<String, Object> model,
+	private Mono<? extends Void> render(
+			List<View> views, Map<String, Object> model, @Nullable MediaType bestMediaType,
 			BindingContext bindingContext, ServerWebExchange exchange) {
 
 		for (View view : views) {
@@ -377,19 +391,20 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 			}
 		}
 		List<MediaType> mediaTypes = getMediaTypes(views);
-		MediaType bestMediaType;
-		try {
-			bestMediaType = selectMediaType(exchange, () -> mediaTypes);
-		}
-		catch (NotAcceptableStatusException ex) {
-			HttpStatusCode statusCode = exchange.getResponse().getStatusCode();
-			if (statusCode != null && statusCode.isError()) {
-				if (logger.isDebugEnabled()) {
-					logger.debug("Ignoring error response content (if any). " + ex.getReason());
-				}
-				return Mono.empty();
+		if (bestMediaType == null) {
+			try {
+				bestMediaType = selectMediaType(exchange, () -> mediaTypes);
 			}
-			throw ex;
+			catch (NotAcceptableStatusException ex) {
+				HttpStatusCode statusCode = exchange.getResponse().getStatusCode();
+				if (statusCode != null && statusCode.isError()) {
+					if (logger.isDebugEnabled()) {
+						logger.debug("Ignoring error response content (if any). " + ex.getReason());
+					}
+					return Mono.empty();
+				}
+				throw ex;
+			}
 		}
 		if (bestMediaType != null) {
 			for (View view : views) {
@@ -426,15 +441,23 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 		@Nullable
 		private Flux<DataBuffer> bodyFlux;
 
-		private final HttpHeaders headers;
+		@Nullable
+		private HttpHeaders headers;
 
 		BodySavingResponse(ServerHttpResponse delegate) {
 			super(delegate);
-			this.headers = new HttpHeaders(delegate.getHeaders()); // Ignore header changes
 		}
 
 		@Override
 		public HttpHeaders getHeaders() {
+			if (!super.getHeaders().containsKey(HttpHeaders.CONTENT_TYPE)) {
+				return super.getHeaders();
+			}
+			// Content-type is set, ignore further updates
+			if (this.headers == null) {
+				this.headers = new HttpHeaders();
+				this.headers.putAll(super.getHeaders());
+			}
 			return this.headers;
 		}
 
@@ -460,7 +483,7 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 	/**
 	 * Strategy to render fragment with stream formatting.
 	 */
-	private interface FragmentFormatter {
+	private interface StreamHandler {
 
 		/**
 		 * Whether the formatter supports the given request.
@@ -468,21 +491,25 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 		boolean supports(ServerHttpRequest request);
 
 		/**
+		 * Update the response before streaming, e.g. to set the content-type.
+		 */
+		void updateResponse(ServerWebExchange exchange);
+
+		/**
 		 * Format the given fragment.
-		 * @param fragmentBuffers the fragment serialized to data buffers
+		 * @param fragmentContent the fragment serialized to data buffers
 		 * @param fragment the fragment being rendered
 		 * @param exchange the current exchange
 		 * @return the formatted fragment
 		 */
-		Flux<DataBuffer> format(Flux<DataBuffer> fragmentBuffers, Fragment fragment, ServerWebExchange exchange);
-
+		Flux<DataBuffer> format(Flux<DataBuffer> fragmentContent, Fragment fragment, ServerWebExchange exchange);
 	}
 
 
 	/**
 	 * Formatter for Server-Sent Events formatting.
 	 */
-	private static class SseFragmentFormatter implements FragmentFormatter {
+	private static class SseStreamHandler implements StreamHandler {
 
 		@Override
 		public boolean supports(ServerHttpRequest request) {
@@ -491,20 +518,14 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 		}
 
 		@Override
-		public Flux<DataBuffer> format(
-				Flux<DataBuffer> fragmentBuffers, Fragment fragment, ServerWebExchange exchange) {
-
+		public void updateResponse(ServerWebExchange exchange) {
+			MediaType mediaType = MediaType.TEXT_EVENT_STREAM;
 			Charset charset = getCharset(exchange.getRequest());
-			DataBufferFactory bufferFactory = exchange.getResponse().bufferFactory();
-
-			String eventLine = fragment.viewName() != null ? "event:" + fragment.viewName() + "\n" : "";
-
-			return Flux.concat(
-					Flux.just(encodeText(eventLine + "data:", charset, bufferFactory)),
-					fragmentBuffers,
-					Flux.just(encodeText("\n\n", charset, bufferFactory)));
+			mediaType = (charset != null ? new MediaType(mediaType, charset) : mediaType);
+			exchange.getResponse().getHeaders().setContentType(mediaType);
 		}
 
+		@Nullable
 		private Charset getCharset(ServerHttpRequest request) {
 			for (MediaType mediaType : request.getHeaders().getAccept()) {
 				if (mediaType.isCompatibleWith(MediaType.TEXT_EVENT_STREAM)) {
@@ -514,7 +535,37 @@ public class ViewResolutionResultHandler extends HandlerResultHandlerSupport imp
 					break;
 				}
 			}
-			return StandardCharsets.UTF_8;
+			return null;
+		}
+
+		@Override
+		public Flux<DataBuffer> format(
+				Flux<DataBuffer> fragmentFlux, Fragment fragment, ServerWebExchange exchange) {
+
+			MediaType mediaType = exchange.getResponse().getHeaders().getContentType();
+			Charset charset = (mediaType != null && mediaType.getCharset() != null ?
+					mediaType.getCharset() : StandardCharsets.UTF_8);
+
+			DataBufferFactory bufferFactory = exchange.getResponse().bufferFactory();
+
+			String eventLine = (fragment.viewName() != null ? "event:" + fragment.viewName() + "\n" : "");
+			DataBuffer prefix = encodeText(eventLine + "data:", charset, bufferFactory);
+			DataBuffer suffix = encodeText("\n\n", charset, bufferFactory);
+
+			Mono<DataBuffer> content = DataBufferUtils.join(fragmentFlux)
+					.map(buffer -> {
+						String text;
+						try {
+							text = buffer.toString(charset);
+						}
+						finally {
+							DataBufferUtils.release(buffer);
+						}
+						text = text.replace("\n", "\ndata:");
+						return bufferFactory.wrap(text.getBytes(charset));
+					});
+
+			return Flux.concat(Flux.just(prefix), content, Flux.just(suffix));
 		}
 
 		private DataBuffer encodeText(String text, Charset charset, DataBufferFactory bufferFactory) {
