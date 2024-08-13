@@ -980,6 +980,11 @@ method parameters:
 
 |===
 
+Method parameters cannot be `null` unless the `required` attribute (where available on a
+parameter annotation) is set to `false`, or the parameter is marked optional as determined by
+{spring-framework-api}/core/MethodParameter.html#isOptional()[`MethodParameter#isOptional`].
+
+
 
 [[rest-http-interface-return-values]]
 === Return Values
