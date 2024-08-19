@@ -88,48 +88,52 @@ class ControllerAdviceBeanTests {
 	}
 
 	@Test
-	void equalsHashCodeAndToStringForBeanName() {
+	void equalsHashCodeAndToString() {
 		String beanName = SimpleControllerAdvice.class.getSimpleName();
-		ControllerAdviceBean bean1 = createControllerAdviceBean(SimpleControllerAdvice.class);
-		ControllerAdviceBean bean2 = createControllerAdviceBean(SimpleControllerAdvice.class);
+		ControllerAdviceBean bean1 = createSingletonControllerAdviceBean(SimpleControllerAdvice.class);
+		ControllerAdviceBean bean2 = createSingletonControllerAdviceBean(SimpleControllerAdvice.class);
 		assertEqualsHashCodeAndToString(bean1, bean2, beanName);
 	}
 
 	@Test
-	void orderedWithLowestPrecedenceByDefaultForBeanName() {
+	void orderedWithLowestPrecedenceByDefault() {
 		assertOrder(SimpleControllerAdvice.class, Ordered.LOWEST_PRECEDENCE);
 	}
 
 	@Test
-	void orderedWithLowestPrecedenceByDefaultForBeanInstance() {
-		assertOrder(SimpleControllerAdvice.class, Ordered.LOWEST_PRECEDENCE);
-	}
-
-	@Test
-	void orderedViaOrderedInterfaceForBeanName() {
+	void orderedViaOrderedInterface() {
 		assertOrder(OrderedControllerAdvice.class, 42);
 	}
 
 	@Test
-	void orderedViaOrderedInterfaceForBeanInstance() {
-		assertOrder(OrderedControllerAdvice.class, 42);
-	}
-
-	@Test
-	void orderedViaAnnotationForBeanName() {
+	void orderedViaAnnotation() {
 		assertOrder(OrderAnnotationControllerAdvice.class, 100);
 		assertOrder(PriorityAnnotationControllerAdvice.class, 200);
 	}
 
 	@Test
-	void orderedViaAnnotationForBeanInstance() {
-		assertOrder(OrderAnnotationControllerAdvice.class, 100);
-		assertOrder(PriorityAnnotationControllerAdvice.class, 200);
+	void resolveBeanForSingletonBean() {
+		String beanName = SimpleControllerAdvice.class.getSimpleName();
+		ControllerAdviceBean cab = createSingletonControllerAdviceBean(SimpleControllerAdvice.class);
+		Object bean = this.applicationContext.getBean(beanName);
+		assertThat(cab).extracting("resolvedBean").isNull();
+		Object resolvedBean = cab.resolveBean();
+		assertThat(cab).extracting("resolvedBean").isEqualTo(bean);
+		assertThat(resolvedBean).isEqualTo(bean);
+	}
+
+	@Test
+	void resolveBeanForPrototypeBean() {
+		ControllerAdviceBean cab = createPrototypeControllerAdviceBean(SimpleControllerAdvice.class);
+		assertThat(cab).extracting("resolvedBean").isNull();
+		Object resolvedBean = cab.resolveBean();
+		assertThat(cab).extracting("resolvedBean").isNull();
+		assertThat(resolvedBean).isInstanceOf(SimpleControllerAdvice.class);
 	}
 
 	@Test
 	void shouldMatchAll() {
-		ControllerAdviceBean bean = createControllerAdviceBean(SimpleControllerAdvice.class);
+		ControllerAdviceBean bean = createSingletonControllerAdviceBean(SimpleControllerAdvice.class);
 		assertApplicable("should match all", bean, AnnotatedController.class);
 		assertApplicable("should match all", bean, ImplementationController.class);
 		assertApplicable("should match all", bean, InheritanceController.class);
@@ -138,7 +142,7 @@ class ControllerAdviceBeanTests {
 
 	@Test
 	void basePackageSupport() {
-		ControllerAdviceBean bean = createControllerAdviceBean(BasePackageSupport.class);
+		ControllerAdviceBean bean = createSingletonControllerAdviceBean(BasePackageSupport.class);
 		assertApplicable("base package support", bean, AnnotatedController.class);
 		assertApplicable("base package support", bean, ImplementationController.class);
 		assertApplicable("base package support", bean, InheritanceController.class);
@@ -147,7 +151,7 @@ class ControllerAdviceBeanTests {
 
 	@Test
 	void basePackageValueSupport() {
-		ControllerAdviceBean bean = createControllerAdviceBean(BasePackageValueSupport.class);
+		ControllerAdviceBean bean = createSingletonControllerAdviceBean(BasePackageValueSupport.class);
 		assertApplicable("base package support", bean, AnnotatedController.class);
 		assertApplicable("base package support", bean, ImplementationController.class);
 		assertApplicable("base package support", bean, InheritanceController.class);
@@ -156,14 +160,14 @@ class ControllerAdviceBeanTests {
 
 	@Test
 	void annotationSupport() {
-		ControllerAdviceBean bean = createControllerAdviceBean(AnnotationSupport.class);
+		ControllerAdviceBean bean = createSingletonControllerAdviceBean(AnnotationSupport.class);
 		assertApplicable("annotation support", bean, AnnotatedController.class);
 		assertNotApplicable("this bean is not annotated", bean, InheritanceController.class);
 	}
 
 	@Test
 	void markerClassSupport() {
-		ControllerAdviceBean bean = createControllerAdviceBean(MarkerClassSupport.class);
+		ControllerAdviceBean bean = createSingletonControllerAdviceBean(MarkerClassSupport.class);
 		assertApplicable("base package class support", bean, AnnotatedController.class);
 		assertApplicable("base package class support", bean, ImplementationController.class);
 		assertApplicable("base package class support", bean, InheritanceController.class);
@@ -172,7 +176,7 @@ class ControllerAdviceBeanTests {
 
 	@Test
 	void shouldNotMatch() {
-		ControllerAdviceBean bean = createControllerAdviceBean(ShouldNotMatch.class);
+		ControllerAdviceBean bean = createSingletonControllerAdviceBean(ShouldNotMatch.class);
 		assertNotApplicable("should not match", bean, AnnotatedController.class);
 		assertNotApplicable("should not match", bean, ImplementationController.class);
 		assertNotApplicable("should not match", bean, InheritanceController.class);
@@ -181,7 +185,7 @@ class ControllerAdviceBeanTests {
 
 	@Test
 	void assignableTypesSupport() {
-		ControllerAdviceBean bean = createControllerAdviceBean(AssignableTypesSupport.class);
+		ControllerAdviceBean bean = createSingletonControllerAdviceBean(AssignableTypesSupport.class);
 		assertApplicable("controller implements assignable", bean, ImplementationController.class);
 		assertApplicable("controller inherits assignable", bean, InheritanceController.class);
 		assertNotApplicable("not assignable", bean, AnnotatedController.class);
@@ -190,7 +194,7 @@ class ControllerAdviceBeanTests {
 
 	@Test
 	void multipleMatch() {
-		ControllerAdviceBean bean = createControllerAdviceBean(MultipleSelectorsSupport.class);
+		ControllerAdviceBean bean = createSingletonControllerAdviceBean(MultipleSelectorsSupport.class);
 		assertApplicable("controller implements assignable", bean, ImplementationController.class);
 		assertApplicable("controller is annotated", bean, AnnotatedController.class);
 		assertNotApplicable("should not match", bean, InheritanceController.class);
@@ -216,9 +220,16 @@ class ControllerAdviceBeanTests {
 		assertThat(adviceBeans).extracting(ControllerAdviceBean::getBeanType).containsExactly(expectedTypes);
 	}
 
-	private ControllerAdviceBean createControllerAdviceBean(Class<?> beanType) {
+	private ControllerAdviceBean createSingletonControllerAdviceBean(Class<?> beanType) {
 		String beanName = beanType.getSimpleName();
 		this.applicationContext.registerSingleton(beanName, beanType);
+		ControllerAdvice controllerAdvice = AnnotatedElementUtils.findMergedAnnotation(beanType, ControllerAdvice.class);
+		return new ControllerAdviceBean(beanName, this.applicationContext, controllerAdvice);
+	}
+
+	private ControllerAdviceBean createPrototypeControllerAdviceBean(Class<?> beanType) {
+		String beanName = beanType.getSimpleName();
+		this.applicationContext.registerPrototype(beanName, beanType);
 		ControllerAdvice controllerAdvice = AnnotatedElementUtils.findMergedAnnotation(beanType, ControllerAdvice.class);
 		return new ControllerAdviceBean(beanName, this.applicationContext, controllerAdvice);
 	}
@@ -232,7 +243,7 @@ class ControllerAdviceBeanTests {
 	}
 
 	private void assertOrder(Class<?> beanType, int expectedOrder) {
-		assertThat(createControllerAdviceBean(beanType).getOrder()).isEqualTo(expectedOrder);
+		assertThat(createSingletonControllerAdviceBean(beanType).getOrder()).isEqualTo(expectedOrder);
 	}
 
 	private void assertApplicable(String message, ControllerAdviceBean controllerAdvice, Class<?> controllerBeanType) {
