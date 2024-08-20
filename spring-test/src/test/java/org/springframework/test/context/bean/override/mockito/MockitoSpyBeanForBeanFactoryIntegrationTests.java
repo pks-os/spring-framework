@@ -16,7 +16,10 @@
 
 package org.springframework.test.context.bean.override.mockito;
 
+import org.junit.jupiter.api.MethodOrderer.OrderAnnotation;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.mockito.Mockito;
 
 import org.springframework.beans.factory.FactoryBean;
@@ -28,6 +31,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBeanForBean
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doReturn;
 
 /**
  * Test {@link MockitoSpyBean @MockitoSpyBean} for a factory bean configuration.
@@ -35,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Simon Baslé
  */
 @SpringJUnitConfig
+@TestMethodOrder(OrderAnnotation.class)
 class MockitoSpyBeanForBeanFactoryIntegrationTests {
 
 	@MockitoSpyBean
@@ -46,13 +51,25 @@ class MockitoSpyBeanForBeanFactoryIntegrationTests {
 	@Autowired
 	private ApplicationContext applicationContext;
 
+	@Order(1)
 	@Test
 	void beanReturnedByFactoryIsSpied() {
 		TestBean bean = this.applicationContext.getBean(TestBean.class);
 		assertThat(this.testBean).as("injected same").isSameAs(bean);
 		assertThat(bean.hello()).isEqualTo("hi");
-
 		Mockito.verify(bean).hello();
+
+		doReturn("sp-hi").when(this.testBean).hello();
+
+		assertThat(bean.hello()).as("after stubbing").isEqualTo("sp-hi");
+		Mockito.verify(bean, Mockito.times(2)).hello();
+	}
+
+	@Order(2)
+	@Test
+	void beanReturnedByFactoryIsReset() {
+		assertThat(this.testBean.hello())
+				.isNotEqualTo("sp-hi");
 	}
 
 	@Test
