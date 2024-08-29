@@ -32,6 +32,7 @@ import org.springframework.test.util.subpackage.StaticMethods;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.springframework.test.util.ReflectionTestUtils.getField;
 import static org.springframework.test.util.ReflectionTestUtils.invokeGetterMethod;
 import static org.springframework.test.util.ReflectionTestUtils.invokeMethod;
@@ -48,7 +49,7 @@ class ReflectionTestUtilsTests {
 
 	private static final Float PI = (float) 22 / 7;
 
-	private final Person person = new PersonEntity();
+	private final PersonEntity person = new PersonEntity();
 
 	private final Component component = new Component();
 
@@ -64,50 +65,50 @@ class ReflectionTestUtilsTests {
 	@Test
 	void setFieldWithNullTargetObject() {
 		assertThatIllegalArgumentException()
-			.isThrownBy(() -> setField((Object) null, "id", 99L))
-			.withMessageStartingWith("Either targetObject or targetClass");
+				.isThrownBy(() -> setField((Object) null, "id", 99L))
+				.withMessageStartingWith("Either targetObject or targetClass");
 	}
 
 	@Test
 	void getFieldWithNullTargetObject() {
 		assertThatIllegalArgumentException()
-			.isThrownBy(() -> getField((Object) null, "id"))
-			.withMessageStartingWith("Either targetObject or targetClass");
+				.isThrownBy(() -> getField((Object) null, "id"))
+				.withMessageStartingWith("Either targetObject or targetClass");
 	}
 
 	@Test
 	void setFieldWithNullTargetClass() {
 		assertThatIllegalArgumentException()
-			.isThrownBy(() -> setField(null, "id", 99L))
-			.withMessageStartingWith("Either targetObject or targetClass");
+				.isThrownBy(() -> setField(null, "id", 99L))
+				.withMessageStartingWith("Either targetObject or targetClass");
 	}
 
 	@Test
 	void getFieldWithNullTargetClass() {
 		assertThatIllegalArgumentException()
-			.isThrownBy(() -> getField(null, "id"))
-			.withMessageStartingWith("Either targetObject or targetClass");
+				.isThrownBy(() -> getField(null, "id"))
+				.withMessageStartingWith("Either targetObject or targetClass");
 	}
 
 	@Test
 	void setFieldWithNullNameAndNullType() {
 		assertThatIllegalArgumentException()
-			.isThrownBy(() -> setField(person, null, 99L, null))
-			.withMessageStartingWith("Either name or type");
+				.isThrownBy(() -> setField(person, null, 99L, null))
+				.withMessageStartingWith("Either name or type");
 	}
 
 	@Test
 	void setFieldWithBogusName() {
 		assertThatIllegalArgumentException()
-			.isThrownBy(() -> setField(person, "bogus", 99L, long.class))
-			.withMessageStartingWith("Could not find field 'bogus'");
+				.isThrownBy(() -> setField(person, "bogus", 99L, long.class))
+				.withMessageStartingWith("Could not find field 'bogus'");
 	}
 
 	@Test
 	void setFieldWithWrongType() {
 		assertThatIllegalArgumentException()
-			.isThrownBy(() -> setField(person, "id", 99L, String.class))
-			.withMessageStartingWith("Could not find field");
+				.isThrownBy(() -> setField(person, "id", 99L, String.class))
+				.withMessageStartingWith("Could not find field");
 	}
 
 	@Test
@@ -156,7 +157,7 @@ class ReflectionTestUtilsTests {
 		assertThat(person.getAge()).as("age (private field)").isEqualTo(42);
 		assertThat(person.getEyeColor()).as("eye color (package private field)").isEqualTo("blue");
 		assertThat(person.likesPets()).as("'likes pets' flag (package private boolean field)").isTrue();
-		assertThat(person.getFavoriteNumber()).as("'favorite number' (package field)").isEqualTo(PI);
+		assertThat(person.getFavoriteNumber()).as("'favorite number' (private field)").isEqualTo(PI);
 	}
 
 	private static void assertSetFieldAndGetFieldBehaviorForProxy(Person proxy, Person target) {
@@ -168,7 +169,7 @@ class ReflectionTestUtilsTests {
 		assertThat(target.getAge()).as("age (private field)").isEqualTo(42);
 		assertThat(target.getEyeColor()).as("eye color (package private field)").isEqualTo("blue");
 		assertThat(target.likesPets()).as("'likes pets' flag (package private boolean field)").isTrue();
-		assertThat(target.getFavoriteNumber()).as("'favorite number' (package field)").isEqualTo(PI);
+		assertThat(target.getFavoriteNumber()).as("'favorite number' (private field)").isEqualTo(PI);
 	}
 
 	@Test
@@ -188,7 +189,7 @@ class ReflectionTestUtilsTests {
 
 		assertThat(person.getName()).as("name (protected field)").isNull();
 		assertThat(person.getEyeColor()).as("eye color (package private field)").isNull();
-		assertThat(person.getFavoriteNumber()).as("'favorite number' (package field)").isNull();
+		assertThat(person.getFavoriteNumber()).as("'favorite number' (private field)").isNull();
 	}
 
 	@Test
@@ -295,6 +296,22 @@ class ReflectionTestUtilsTests {
 		assertThat(invokeGetterMethod(person, "favoriteNumber")).isEqualTo(PI);
 	}
 
+	@Test  // gh-33429
+	void invokingPrivateGetterMethodViaCglibProxyInvokesMethodOnUltimateTarget() {
+		this.person.setPrivateEye("I");
+		ProxyFactory pf = new ProxyFactory(this.person);
+		pf.setProxyTargetClass(true);
+		PersonEntity proxy = (PersonEntity) pf.getProxy();
+		assertThat(AopUtils.isCglibProxy(proxy)).as("Proxy is a CGLIB proxy").isTrue();
+
+		assertSoftly(softly -> {
+			softly.assertThat(getField(this.person, "privateEye")).as("'privateEye' (private field in target)").isEqualTo("I");
+			softly.assertThat(getField(proxy, "privateEye")).as("'privateEye' (private field in proxy)").isEqualTo("I");
+			softly.assertThat(invokeGetterMethod(this.person, "privateEye")).as("'privateEye' (getter on target)").isEqualTo("I");
+			softly.assertThat(invokeGetterMethod(proxy, "privateEye")).as("'privateEye' (getter on proxy)").isEqualTo("I");
+		});
+	}
+
 	@Test
 	void invokeSetterMethodWithNullValuesForNonPrimitives() {
 		invokeSetterMethod(person, "name", null, String.class);
@@ -304,6 +321,41 @@ class ReflectionTestUtilsTests {
 		assertThat(person.getName()).as("name (private method)").isNull();
 		assertThat(person.getEyeColor()).as("eye color (package private method)").isNull();
 		assertThat(person.getFavoriteNumber()).as("'favorite number' (protected method for a Number)").isNull();
+	}
+
+	@Test  // gh-33429
+	void invokingPrivateSetterMethodViaCglibProxyInvokesMethodOnUltimateTarget() {
+		ProxyFactory pf = new ProxyFactory(this.person);
+		pf.setProxyTargetClass(true);
+		PersonEntity proxy = (PersonEntity) pf.getProxy();
+		assertThat(AopUtils.isCglibProxy(proxy)).as("Proxy is a CGLIB proxy").isTrue();
+
+		// Set reflectively
+		invokeSetterMethod(proxy, "favoriteNumber", PI, Number.class);
+
+		assertSoftly(softly -> {
+			softly.assertThat(getField(proxy, "favoriteNumber")).as("'favorite number' (private field)").isEqualTo(PI);
+			softly.assertThat(proxy.getFavoriteNumber()).as("'favorite number' (getter on proxy)").isEqualTo(PI);
+			softly.assertThat(this.person.getFavoriteNumber()).as("'favorite number' (getter on target)").isEqualTo(PI);
+		});
+	}
+
+	@Test  // gh-33429
+	void invokingFinalSetterMethodViaCglibProxyInvokesMethodOnUltimateTarget() {
+		ProxyFactory pf = new ProxyFactory(this.person);
+		pf.setProxyTargetClass(true);
+		PersonEntity proxy = (PersonEntity) pf.getProxy();
+		assertThat(AopUtils.isCglibProxy(proxy)).as("Proxy is a CGLIB proxy").isTrue();
+		assertThat(proxy.getPuzzle()).as("puzzle").isNull();
+
+		// Set reflectively
+		invokeSetterMethod(proxy, "puzzle", "enigma", String.class);
+
+		assertSoftly(softly -> {
+			softly.assertThat(getField(proxy, "puzzle")).as("'puzzle' (private field)").isEqualTo("enigma");
+			softly.assertThat(proxy.getPuzzle()).as("'puzzle' (getter on proxy)").isEqualTo("enigma");
+			softly.assertThat(this.person.getPuzzle()).as("'puzzle' (getter on target)").isEqualTo("enigma");
+		});
 	}
 
 	@Test
@@ -362,32 +414,49 @@ class ReflectionTestUtilsTests {
 		assertThat(component.getText()).as("text").isNull();
 	}
 
+	@Test  // gh-33429
+	void invokingPrivateMethodViaCglibProxyInvokesMethodOnUltimateTarget() {
+		ProxyFactory pf = new ProxyFactory(this.person);
+		pf.setProxyTargetClass(true);
+		PersonEntity proxy = (PersonEntity) pf.getProxy();
+		assertThat(AopUtils.isCglibProxy(proxy)).as("Proxy is a CGLIB proxy").isTrue();
+
+		// Set reflectively
+		invokeMethod(proxy, "setFavoriteNumber", PI);
+
+		assertSoftly(softly -> {
+			softly.assertThat(getField(proxy, "favoriteNumber")).as("'favorite number' (private field)").isEqualTo(PI);
+			softly.assertThat(proxy.getFavoriteNumber()).as("'favorite number' (getter on proxy)").isEqualTo(PI);
+			softly.assertThat(this.person.getFavoriteNumber()).as("'favorite number' (getter on target)").isEqualTo(PI);
+		});
+	}
+
 	@Test
 	void invokeInitMethodBeforeAutowiring() {
 		assertThatIllegalStateException()
-			.isThrownBy(() -> invokeMethod(component, "init"))
-			.withMessageStartingWith("number must not be null");
+				.isThrownBy(() -> invokeMethod(component, "init"))
+				.withMessageStartingWith("number must not be null");
 	}
 
 	@Test
 	void invokeMethodWithIncompatibleArgumentTypes() {
 		assertThatIllegalStateException()
-			.isThrownBy(() -> invokeMethod(component, "subtract", "foo", 2.0))
-			.withMessageStartingWith("Method not found");
+				.isThrownBy(() -> invokeMethod(component, "subtract", "foo", 2.0))
+				.withMessageStartingWith("Method not found");
 	}
 
 	@Test
 	void invokeMethodWithTooFewArguments() {
 		assertThatIllegalStateException()
-			.isThrownBy(() -> invokeMethod(component, "configure", 42))
-			.withMessageStartingWith("Method not found");
+				.isThrownBy(() -> invokeMethod(component, "configure", 42))
+				.withMessageStartingWith("Method not found");
 	}
 
 	@Test
 	void invokeMethodWithTooManyArguments() {
 		assertThatIllegalStateException()
-			.isThrownBy(() -> invokeMethod(component, "configure", 42, "enigma", "baz", "quux"))
-			.withMessageStartingWith("Method not found");
+				.isThrownBy(() -> invokeMethod(component, "configure", 42, "enigma", "baz", "quux"))
+				.withMessageStartingWith("Method not found");
 	}
 
 	@Test // SPR-14363
@@ -400,7 +469,7 @@ class ReflectionTestUtilsTests {
 	void setFieldOnLegacyEntityWithSideEffectsInToString() {
 		String testCollaborator = "test collaborator";
 		setField(entity, "collaborator", testCollaborator, Object.class);
-		assertThat(entity.toString()).contains(testCollaborator);
+		assertThat(entity).asString().contains(testCollaborator);
 	}
 
 	@Test // SPR-14363
@@ -420,28 +489,28 @@ class ReflectionTestUtilsTests {
 	void invokeSetterMethodOnLegacyEntityWithSideEffectsInToString() {
 		String testCollaborator = "test collaborator";
 		invokeSetterMethod(entity, "collaborator", testCollaborator);
-		assertThat(entity.toString()).contains(testCollaborator);
+		assertThat(entity).asString().contains(testCollaborator);
 	}
 
 	@Test
 	void invokeStaticMethodWithNullTargetClass() {
 		assertThatIllegalArgumentException()
-			.isThrownBy(() -> invokeMethod(null, null))
-			.withMessage("Target class must not be null");
+				.isThrownBy(() -> invokeMethod(null, null))
+				.withMessage("Target class must not be null");
 	}
 
 	@Test
 	void invokeStaticMethodWithNullMethodName() {
 		assertThatIllegalArgumentException()
-			.isThrownBy(() -> invokeMethod(getClass(), null))
-			.withMessage("Method name must not be empty");
+				.isThrownBy(() -> invokeMethod(getClass(), null))
+				.withMessage("Method name must not be empty");
 	}
 
 	@Test
 	void invokeStaticMethodWithEmptyMethodName() {
 		assertThatIllegalArgumentException()
-			.isThrownBy(() -> invokeMethod(getClass(), "  "))
-			.withMessage("Method name must not be empty");
+				.isThrownBy(() -> invokeMethod(getClass(), "  "))
+				.withMessage("Method name must not be empty");
 	}
 
 	@Test
@@ -481,8 +550,8 @@ class ReflectionTestUtilsTests {
 	@Test
 	void invokeStaticMethodWithNullTargetObjectAndNullTargetClass() {
 		assertThatIllegalArgumentException()
-			.isThrownBy(() -> invokeMethod(null, (Class<?>) null, "id"))
-			.withMessage("Either 'targetObject' or 'targetClass' for the method must be specified");
+				.isThrownBy(() -> invokeMethod(null, (Class<?>) null, "id"))
+				.withMessage("Either 'targetObject' or 'targetClass' for the method must be specified");
 	}
 
 }
