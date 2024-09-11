@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2023 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -568,16 +568,8 @@ public class ResponseEntity<T> extends HttpEntity<T> {
 		}
 
 		@Override
-		public BodyBuilder eTag(@Nullable String etag) {
-			if (etag != null) {
-				if (!etag.startsWith("\"") && !etag.startsWith("W/\"")) {
-					etag = "\"" + etag;
-				}
-				if (!etag.endsWith("\"")) {
-					etag = etag + "\"";
-				}
-			}
-			this.headers.setETag(etag);
+		public BodyBuilder eTag(@Nullable String tag) {
+			this.headers.setETag(tag);
 			return this;
 		}
 

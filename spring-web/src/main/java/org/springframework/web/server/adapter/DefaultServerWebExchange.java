@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2023 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.i18n.LocaleContext;
 import org.springframework.core.ResolvableType;
 import org.springframework.core.codec.Hints;
+import org.springframework.http.ETag;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -329,10 +330,11 @@ public class DefaultServerWebExchange implements ServerWebExchange {
 			if (SAFE_METHODS.contains(getRequest().getMethod())) {
 				return false;
 			}
-			if (CollectionUtils.isEmpty(getRequestHeaders().get(HttpHeaders.IF_MATCH))) {
+			List<String> values = getRequestHeaders().getOrEmpty(HttpHeaders.IF_MATCH);
+			if (CollectionUtils.isEmpty(values)) {
 				return false;
 			}
-			this.notModified = matchRequestedETags(getRequestHeaders().getIfMatch(), eTag, false);
+			this.notModified = matchRequestedETags(values, eTag, false);
 		}
 		catch (IllegalArgumentException ex) {
 			return false;
@@ -340,58 +342,23 @@ public class DefaultServerWebExchange implements ServerWebExchange {
 		return true;
 	}
 
-	private boolean matchRequestedETags(List<String> requestedETags, @Nullable String eTag, boolean weakCompare) {
-		eTag = padEtagIfNecessary(eTag);
-		for (String clientEtag : requestedETags) {
-			// only consider "lost updates" checks for unsafe HTTP methods
-			if ("*".equals(clientEtag) && StringUtils.hasLength(eTag)
-					&& !SAFE_METHODS.contains(getRequest().getMethod())) {
-				return false;
-			}
-			// Compare weak/strong ETags as per https://datatracker.ietf.org/doc/html/rfc9110#section-8.8.3
-			if (weakCompare) {
-				if (eTagWeakMatch(eTag, clientEtag)) {
-					return false;
-				}
-			}
-			else {
-				if (eTagStrongMatch(eTag, clientEtag)) {
-					return false;
+	private boolean matchRequestedETags(List<String> requestedETagValues, @Nullable String tag, boolean weakCompare) {
+		if (StringUtils.hasLength(tag)) {
+			ETag eTag = ETag.create(tag);
+			boolean isNotSafeMethod = !SAFE_METHODS.contains(getRequest().getMethod());
+			for (String eTagValue : requestedETagValues) {
+				for (ETag requestedETag : ETag.parse(eTagValue)) {
+					// only consider "lost updates" checks for unsafe HTTP methods
+					if (requestedETag.isWildcard() && isNotSafeMethod) {
+						return false;
+					}
+					if (requestedETag.compare(eTag, !weakCompare)) {
+						return false;
+					}
 				}
 			}
 		}
 		return true;
-	}
-
-	@Nullable
-	private String padEtagIfNecessary(@Nullable String etag) {
-		if (!StringUtils.hasLength(etag)) {
-			return etag;
-		}
-		if ((etag.startsWith("\"") || etag.startsWith("W/\"")) && etag.endsWith("\"")) {
-			return etag;
-		}
-		return "\"" + etag + "\"";
-	}
-
-	private boolean eTagStrongMatch(@Nullable String first, @Nullable String second) {
-		if (!StringUtils.hasLength(first) || first.startsWith("W/")) {
-			return false;
-		}
-		return first.equals(second);
-	}
-
-	private boolean eTagWeakMatch(@Nullable String first, @Nullable String second) {
-		if (!StringUtils.hasLength(first) || !StringUtils.hasLength(second)) {
-			return false;
-		}
-		if (first.startsWith("W/")) {
-			first = first.substring(2);
-		}
-		if (second.startsWith("W/")) {
-			second = second.substring(2);
-		}
-		return first.equals(second);
 	}
 
 	private void updateResponseStateChanging(@Nullable String eTag, Instant lastModified) {
@@ -408,7 +375,8 @@ public class DefaultServerWebExchange implements ServerWebExchange {
 			if (CollectionUtils.isEmpty(getRequestHeaders().get(HttpHeaders.IF_NONE_MATCH))) {
 				return false;
 			}
-			this.notModified = !matchRequestedETags(getRequestHeaders().getIfNoneMatch(), eTag, true);
+			List<String> values = getRequestHeaders().getOrEmpty(HttpHeaders.IF_NONE_MATCH);
+			this.notModified = !matchRequestedETags(values, eTag, true);
 		}
 		catch (IllegalArgumentException ex) {
 			return false;
@@ -425,13 +393,13 @@ public class DefaultServerWebExchange implements ServerWebExchange {
 		addCachingResponseHeaders(eTag, lastModified);
 	}
 
-	private void addCachingResponseHeaders(@Nullable String eTag, Instant lastModified) {
+	private void addCachingResponseHeaders(@Nullable String tag, Instant lastModified) {
 		if (SAFE_METHODS.contains(getRequest().getMethod())) {
 			if (lastModified.isAfter(Instant.EPOCH) && getResponseHeaders().getLastModified() == -1) {
 				getResponseHeaders().setLastModified(lastModified.toEpochMilli());
 			}
-			if (StringUtils.hasLength(eTag) && getResponseHeaders().getETag() == null) {
-				getResponseHeaders().setETag(padEtagIfNecessary(eTag));
+			if (StringUtils.hasLength(tag) && getResponseHeaders().getETag() == null) {
+				getResponseHeaders().setETag(tag);
 			}
 		}
 	}
