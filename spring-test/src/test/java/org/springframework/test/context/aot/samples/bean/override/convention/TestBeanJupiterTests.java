@@ -14,43 +14,42 @@
  * limitations under the License.
  */
 
-package org.springframework.test.context.bean.override.convention;
+package org.springframework.test.context.aot.samples.bean.override.convention;
 
 import org.junit.jupiter.api.Test;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.test.context.bean.override.example.TestBeanFactory;
+import org.springframework.test.context.bean.override.convention.TestBean;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Integration tests for {@link TestBean} that use bean factory methods defined
- * in implemented interfaces.
- *
  * @author Sam Brannen
  * @since 6.2
  */
 @SpringJUnitConfig
-class TestBeanForInterfaceIntegrationTests implements TestBeanFactory {
+public class TestBeanJupiterTests {
 
-	@TestBean(methodName = "createTestMessage")
-	String message;
+	@TestBean
+	String magicBean;
 
-
-	@Test
-	void test() {
-		assertThat(message).isEqualTo("test");
+	static String magicBean() {
+		return "enigma-override";
 	}
 
+	@Test
+	void tests() {
+		assertThat(magicBean).isEqualTo("enigma-override");
+	}
 
 	@Configuration(proxyBeanMethods = false)
 	static class Config {
 
 		@Bean
-		String message() {
-			return "prod";
+		String magicBean() {
+			return "enigma";
 		}
 	}
 
