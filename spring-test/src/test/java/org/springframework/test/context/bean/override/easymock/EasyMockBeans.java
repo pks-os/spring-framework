@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,31 +14,27 @@
  * limitations under the License.
  */
 
-package org.springframework.test.context.bean.override.mockito;
+package org.springframework.test.context.bean.override.easymock;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import org.mockito.Mockito;
+import org.easymock.EasyMock;
 
 /**
- * Beans created using Mockito.
- *
- * @author Andy Wilkinson
  * @author Sam Brannen
  * @since 6.2
  */
-class MockitoBeans {
+class EasyMockBeans {
 
 	private final List<Object> beans = new ArrayList<>();
-
 
 	void add(Object bean) {
 		this.beans.add(bean);
 	}
 
 	void resetAll() {
-		this.beans.forEach(Mockito::reset);
+		this.beans.forEach(EasyMock::reset);
 	}
 
 }
