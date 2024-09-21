@@ -43,8 +43,16 @@ public class MockCookie extends Cookie {
 
 	private static final long serialVersionUID = 4312531139502726325L;
 
+	private static final String PATH = "Path";
+	private static final String DOMAIN = "Domain";
+	private static final String COMMENT = "Comment";
+	private static final String SECURE = "Secure";
+	private static final String HTTP_ONLY = "HttpOnly";
+	private static final String PARTITIONED = "Partitioned";
 	private static final String SAME_SITE = "SameSite";
+	private static final String MAX_AGE = "Max-Age";
 	private static final String EXPIRES = "Expires";
+
 
 	@Nullable
 	private ZonedDateTime expires;
@@ -105,10 +113,10 @@ public class MockCookie extends Cookie {
 	 */
 	public void setPartitioned(boolean partitioned) {
 		if (partitioned) {
-			setAttribute("Partitioned", "");
+			setAttribute(PARTITIONED, "");
 		}
 		else {
-			setAttribute("Partitioned", null);
+			setAttribute(PARTITIONED, null);
 		}
 	}
 
@@ -118,7 +126,7 @@ public class MockCookie extends Cookie {
 	 * @see <a href="https://datatracker.ietf.org/doc/html/draft-cutler-httpbis-partitioned-cookies#section-2.1">The Partitioned attribute spec</a>
 	 */
 	public boolean isPartitioned() {
-		return getAttribute("Partitioned") != null;
+		return getAttribute(PARTITIONED) != null;
 	}
 
 	/**
@@ -139,10 +147,10 @@ public class MockCookie extends Cookie {
 
 		MockCookie cookie = new MockCookie(name, value);
 		for (String attribute : attributes) {
-			if (StringUtils.startsWithIgnoreCase(attribute, "Domain")) {
+			if (StringUtils.startsWithIgnoreCase(attribute, DOMAIN)) {
 				cookie.setDomain(extractAttributeValue(attribute, setCookieHeader));
 			}
-			else if (StringUtils.startsWithIgnoreCase(attribute, "Max-Age")) {
+			else if (StringUtils.startsWithIgnoreCase(attribute, MAX_AGE)) {
 				cookie.setMaxAge(Integer.parseInt(extractAttributeValue(attribute, setCookieHeader)));
 			}
 			else if (StringUtils.startsWithIgnoreCase(attribute, EXPIRES)) {
@@ -154,19 +162,19 @@ public class MockCookie extends Cookie {
 					// ignore invalid date formats
 				}
 			}
-			else if (StringUtils.startsWithIgnoreCase(attribute, "Path")) {
+			else if (StringUtils.startsWithIgnoreCase(attribute, PATH)) {
 				cookie.setPath(extractAttributeValue(attribute, setCookieHeader));
 			}
-			else if (StringUtils.startsWithIgnoreCase(attribute, "Secure")) {
+			else if (StringUtils.startsWithIgnoreCase(attribute, SECURE)) {
 				cookie.setSecure(true);
 			}
-			else if (StringUtils.startsWithIgnoreCase(attribute, "HttpOnly")) {
+			else if (StringUtils.startsWithIgnoreCase(attribute, HTTP_ONLY)) {
 				cookie.setHttpOnly(true);
 			}
 			else if (StringUtils.startsWithIgnoreCase(attribute, SAME_SITE)) {
 				cookie.setSameSite(extractAttributeValue(attribute, setCookieHeader));
 			}
-			else if (StringUtils.startsWithIgnoreCase(attribute, "Comment")) {
+			else if (StringUtils.startsWithIgnoreCase(attribute, COMMENT)) {
 				cookie.setComment(extractAttributeValue(attribute, setCookieHeader));
 			}
 			else if (!attribute.isEmpty()) {
@@ -201,15 +209,15 @@ public class MockCookie extends Cookie {
 		return new ToStringCreator(this)
 				.append("name", getName())
 				.append("value", getValue())
-				.append("Path", getPath())
-				.append("Domain", getDomain())
+				.append(PATH, getPath())
+				.append(DOMAIN, getDomain())
 				.append("Version", getVersion())
-				.append("Comment", getComment())
-				.append("Secure", getSecure())
-				.append("HttpOnly", isHttpOnly())
-				.append("Partitioned", isPartitioned())
+				.append(COMMENT, getComment())
+				.append(SECURE, getSecure())
+				.append(HTTP_ONLY, isHttpOnly())
+				.append(PARTITIONED, isPartitioned())
 				.append(SAME_SITE, getSameSite())
-				.append("Max-Age", getMaxAge())
+				.append(MAX_AGE, getMaxAge())
 				.append(EXPIRES, getAttribute(EXPIRES))
 				.toString();
 	}
