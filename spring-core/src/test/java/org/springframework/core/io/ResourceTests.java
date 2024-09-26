@@ -377,6 +377,13 @@ class ResourceTests {
 		}
 
 		@Test
+		void unusualRelativeResourcesAreEqual() throws Exception {
+			Resource resource = new UrlResource("file:dir/");
+			Resource relative = resource.createRelative("https://spring.io");
+			assertThat(relative).isEqualTo(new UrlResource("file:dir/https://spring.io"));
+		}
+
+		@Test
 		void missingRemoteResourceDoesNotExist() throws Exception {
 			String baseUrl = startServer();
 			UrlResource resource = new UrlResource(baseUrl + "/missing");
@@ -414,14 +421,14 @@ class ResourceTests {
 		@Test
 		void useUserInfoToSetBasicAuth() throws Exception {
 			startServer();
-			UrlResource resource = new UrlResource("http://alice:secret@localhost:"
-					+ this.server.getPort() + "/resource");
+			UrlResource resource = new UrlResource(
+					"http://alice:secret@localhost:" + this.server.getPort() + "/resource");
 			assertThat(resource.getInputStream()).hasContent("Spring");
 			RecordedRequest request = this.server.takeRequest();
 			String authorization = request.getHeader("Authorization");
 			assertThat(authorization).isNotNull().startsWith("Basic ");
-			assertThat(new String(Base64.getDecoder().decode(
-					authorization.substring(6)), StandardCharsets.ISO_8859_1)).isEqualTo("alice:secret");
+			assertThat(new String(Base64.getDecoder().decode(authorization.substring(6)),
+					StandardCharsets.ISO_8859_1)).isEqualTo("alice:secret");
 		}
 
 		@AfterEach

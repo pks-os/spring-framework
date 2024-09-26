@@ -27,6 +27,7 @@ import java.util.Map;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.lang.Nullable;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.LinkedCaseInsensitiveMap;
 import org.springframework.util.MultiValueMap;
@@ -48,11 +49,10 @@ class JdkClientHttpResponse implements ClientHttpResponse {
 	private final InputStream body;
 
 
-	public JdkClientHttpResponse(HttpResponse<InputStream> response) {
+	public JdkClientHttpResponse(HttpResponse<InputStream> response, @Nullable InputStream body) {
 		this.response = response;
 		this.headers = adaptHeaders(response);
-		InputStream inputStream = response.body();
-		this.body = (inputStream != null ? inputStream : InputStream.nullInputStream());
+		this.body = (body != null ? body : InputStream.nullInputStream());
 	}
 
 	private static HttpHeaders adaptHeaders(HttpResponse<?> response) {
