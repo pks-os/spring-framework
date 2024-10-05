@@ -97,7 +97,16 @@ class AotIntegrationTests extends AbstractAotTests {
 		// AOT BUILD-TIME: PROCESSING
 		InMemoryGeneratedFiles generatedFiles = new InMemoryGeneratedFiles();
 		TestContextAotGenerator generator = new TestContextAotGenerator(generatedFiles, new RuntimeHints());
-		generator.processAheadOfTime(testClasses);
+		try {
+			// Emulate AbstractAotProcessor.process().
+			System.setProperty(AbstractAotProcessor.AOT_PROCESSING, "true");
+
+			generator.processAheadOfTime(testClasses);
+		}
+		finally {
+			// Emulate AbstractAotProcessor.process().
+			System.clearProperty(AbstractAotProcessor.AOT_PROCESSING);
+		}
 
 		List<String> sourceFiles = generatedFiles.getGeneratedFiles(Kind.SOURCE).keySet().stream().toList();
 		assertThat(sourceFiles).containsExactlyInAnyOrder(expectedSourceFilesForBasicSpringTests);
@@ -146,18 +155,13 @@ class AotIntegrationTests extends AbstractAotTests {
 		runEndToEndTests(testClasses, false);
 	}
 
-	@Disabled("Comment out to run @TestBean integration tests in AOT mode")
+	@Disabled("Comment out to run Bean Override integration tests in AOT mode")
 	@Test
-	void endToEndTestsForTestBeanOverrideTestClasses() {
-		List<Class<?>> testClasses = List.of(
-				org.springframework.test.context.aot.samples.bean.override.convention.TestBeanJupiterTests.class,
-				org.springframework.test.context.bean.override.convention.TestBeanForByNameLookupIntegrationTests.class,
-				org.springframework.test.context.bean.override.convention.TestBeanForByNameLookupIntegrationTests.TestBeanFieldInEnclosingClassTests.class,
-				org.springframework.test.context.bean.override.convention.TestBeanForByNameLookupIntegrationTests.TestBeanFieldInEnclosingClassTests.TestBeanFieldInEnclosingClassLevel2Tests.class,
-				org.springframework.test.context.bean.override.convention.TestBeanForByNameLookupIntegrationTests.TestBeanFactoryMethodInEnclosingClassTests.class,
-				org.springframework.test.context.bean.override.convention.TestBeanForByNameLookupIntegrationTests.TestBeanFactoryMethodInEnclosingClassTests.TestBeanFactoryMethodInEnclosingClassLevel2Tests.class
-		);
-
+	void endToEndTestsForBeanOverrides() {
+		List<Class<?>> testClasses = createTestClassScanner()
+				.scan("org.springframework.test.context.bean.override")
+				.filter(clazz -> clazz.getSimpleName().endsWith("Tests"))
+				.toList();
 		runEndToEndTests(testClasses, true);
 	}
 
@@ -176,13 +180,13 @@ class AotIntegrationTests extends AbstractAotTests {
 
 	private void runEndToEndTests(List<Class<?>> testClasses, boolean failOnError) {
 		InMemoryGeneratedFiles generatedFiles = new InMemoryGeneratedFiles();
+		TestContextAotGenerator generator = new TestContextAotGenerator(generatedFiles, new RuntimeHints(), failOnError);
 
 		// AOT BUILD-TIME: PROCESSING
 		try {
 			// Emulate AbstractAotProcessor.process().
 			System.setProperty(AbstractAotProcessor.AOT_PROCESSING, "true");
 
-			TestContextAotGenerator generator = new TestContextAotGenerator(generatedFiles, new RuntimeHints(), failOnError);
 			generator.processAheadOfTime(testClasses.stream());
 		}
 		finally {

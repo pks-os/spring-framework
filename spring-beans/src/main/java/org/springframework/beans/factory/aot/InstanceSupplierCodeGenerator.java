@@ -67,7 +67,7 @@ import org.springframework.util.function.ThrowingSupplier;
  * <p>Generated code is usually a method reference that generates the
  * {@link BeanInstanceSupplier}, but some shortcut can be used as well such as:
  * <pre class="code">
- * {@code InstanceSupplier.of(TheGeneratedClass::getMyBeanInstance);}
+ * InstanceSupplier.of(TheGeneratedClass::getMyBeanInstance);
  * </pre>
  *
  * @author Phillip Webb
@@ -151,12 +151,7 @@ public class InstanceSupplierCodeGenerator {
 		if (registeredBean.getBeanFactory() instanceof DefaultListableBeanFactory dlbf) {
 			RuntimeHints runtimeHints = this.generationContext.getRuntimeHints();
 			ProxyRuntimeHintsRegistrar registrar = new ProxyRuntimeHintsRegistrar(dlbf.getAutowireCandidateResolver());
-			if (constructorOrFactoryMethod instanceof Method method) {
-				registrar.registerRuntimeHints(runtimeHints, method);
-			}
-			else if (constructorOrFactoryMethod instanceof Constructor<?> constructor) {
-				registrar.registerRuntimeHints(runtimeHints, constructor);
-			}
+			registrar.registerRuntimeHints(runtimeHints, constructorOrFactoryMethod);
 		}
 	}
 
@@ -392,7 +387,8 @@ public class InstanceSupplierCodeGenerator {
 
 	private boolean isThrowingCheckedException(Executable executable) {
 		return Arrays.stream(executable.getGenericExceptionTypes())
-				.map(ResolvableType::forType).map(ResolvableType::toClass)
+				.map(ResolvableType::forType)
+				.map(ResolvableType::toClass)
 				.anyMatch(Exception.class::isAssignableFrom);
 	}
 
@@ -418,29 +414,13 @@ public class InstanceSupplierCodeGenerator {
 	}
 
 
-	private static class ProxyRuntimeHintsRegistrar {
+	private record ProxyRuntimeHintsRegistrar(AutowireCandidateResolver candidateResolver) {
 
-		private final AutowireCandidateResolver candidateResolver;
-
-		public ProxyRuntimeHintsRegistrar(AutowireCandidateResolver candidateResolver) {
-			this.candidateResolver = candidateResolver;
-		}
-
-		public void registerRuntimeHints(RuntimeHints runtimeHints, Method method) {
-			Class<?>[] parameterTypes = method.getParameterTypes();
+		public void registerRuntimeHints(RuntimeHints runtimeHints, Executable executable) {
+			Class<?>[] parameterTypes = executable.getParameterTypes();
 			for (int i = 0; i < parameterTypes.length; i++) {
-				MethodParameter methodParam = new MethodParameter(method, i);
+				MethodParameter methodParam = MethodParameter.forExecutable(executable, i);
 				DependencyDescriptor dependencyDescriptor = new DependencyDescriptor(methodParam, true);
-				registerProxyIfNecessary(runtimeHints, dependencyDescriptor);
-			}
-		}
-
-		public void registerRuntimeHints(RuntimeHints runtimeHints, Constructor<?> constructor) {
-			Class<?>[] parameterTypes = constructor.getParameterTypes();
-			for (int i = 0; i < parameterTypes.length; i++) {
-				MethodParameter methodParam = new MethodParameter(constructor, i);
-				DependencyDescriptor dependencyDescriptor = new DependencyDescriptor(
-						methodParam, true);
 				registerProxyIfNecessary(runtimeHints, dependencyDescriptor);
 			}
 		}
