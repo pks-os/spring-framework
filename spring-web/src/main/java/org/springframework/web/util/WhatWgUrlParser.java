@@ -47,12 +47,9 @@ import org.springframework.util.Assert;
  * <p>Comments in this class correlate to the parsing algorithm.
  * The implementation differs from the spec in the following ways:
  * <ul>
- * <li>Support for URI templates has been added, through the
- * {@link State#URL_TEMPLATE} state</li>
- * <li>Consequentially, the {@linkplain UrlRecord#port() URL port} has been
- * changed from an integer to a string,</li>
- * <li>To ensure that trailing slashes are significant, this implementation
- * prepends a '/' to each segment.</li>
+ * <li>Supports URI template variables within URI components.
+ * <li>Consequently, the port is a String and not an integer.
+ * <li>Prepends '/' to each segment to ensure trailing slashes are significant.
  * </ul>
  * All of these modifications have been indicated through comments that start
  * with {@code EXTRA}.
@@ -60,6 +57,7 @@ import org.springframework.util.Assert;
  * @author Arjen Poutsma
  * @since 6.2
  */
+@SuppressWarnings({"SameParameterValue", "BooleanMethodIsAlwaysInverted"})
 final class WhatWgUrlParser {
 
 	public static final UrlRecord EMPTY_RECORD = new UrlRecord();
@@ -90,9 +88,6 @@ final class WhatWgUrlParser {
 	private State state;
 
 	@Nullable
-	private State previousState;
-
-	@Nullable
 	private State stateOverride;
 
 	private boolean atSignSeen;
@@ -100,6 +95,8 @@ final class WhatWgUrlParser {
 	private boolean passwordTokenSeen;
 
 	private boolean insideBrackets;
+
+	private int openCurlyBracketCount;
 
 	private boolean stopMainLoop = false;
 
@@ -144,7 +141,7 @@ final class WhatWgUrlParser {
 	/**
 	 * The basic URL parser takes a scalar value string input, with an optional
 	 * null or base URL base (default null), an optional encoding (default UTF-8),
-	 * an optional UrlRecord, and an optional state override.
+	 * and optionally, a UrlRecord and/or State overrides to start from.
 	 */
 	private UrlRecord basicUrlParser(@Nullable UrlRecord url, @Nullable State stateOverride) {
 		// If url is not given:
@@ -235,12 +232,22 @@ final class WhatWgUrlParser {
 			else {
 				c = "EOF";
 			}
-			logger.trace("Changing state from " + this.state + " to " +
-					newState + " (cur: " + c + " prev: " + this.previousState + ")");
+			logger.trace("Changing state from " + this.state + " to " + newState + " (cur: " + c + ")");
 		}
-		// EXTRA: we keep the previous state, to ensure that the parser can escape from malformed URI templates
-		this.previousState = this.state;
 		this.state = newState;
+		this.openCurlyBracketCount = 0;
+	}
+
+	private boolean processCurlyBrackets(int c) {
+		if (c == '{') {
+			this.openCurlyBracketCount++;
+			return true;
+		}
+		if (c == '}') {
+			this.openCurlyBracketCount--;
+			return true;
+		}
+		return (this.openCurlyBracketCount > 0 && c != EOF);
 	}
 
 	private static LinkedList<String> strictSplit(String input, int delimiter) {
@@ -465,6 +472,7 @@ final class WhatWgUrlParser {
 				ch == 0xEFFFE || ch == 0xEFFFF || ch == 0xFFFFE || ch == 0xFFFFF || ch == 0x10FFFE || ch == 0x10FFFF);
 	}
 
+	@SuppressWarnings("BooleanMethodIsAlwaysInverted")
 	private static boolean isUrlCodePoint(int ch) {
 		return (isAsciiAlphaNumeric(ch) ||
 				ch == '!' || ch == '$' || ch == '&' || ch == '\'' || ch == '(' || ch == ')' ||
@@ -484,10 +492,8 @@ final class WhatWgUrlParser {
 		if (scheme != null) {
 			return switch (scheme) {
 				case "ftp" -> 21;
-				case "http" -> 80;
-				case "https" -> 443;
-				case "ws" -> 80;
-				case "wss" -> 443;
+				case "http", "ws" -> 80;
+				case "https", "wss" -> 443;
 				default -> -1;
 			};
 		}
@@ -680,10 +686,9 @@ final class WhatWgUrlParser {
 
 	/**
 	 * A Windows drive letter is two code points, of which the first is an ASCII alpha
-	 * and the second is either U+003A (:) or U+007C (|).
-	 *
+	 * and the second is either U+003A {@code (:)} or U+007C {@code (|)}.
 	 * A normalized Windows drive letter is a Windows drive letter of which
-	 * the second code point is U+003A (:).
+	 * the second code point is U+003A {@code (:)}.
 	 */
 	private static boolean isWindowsDriveLetter(CharSequence input, boolean normalized) {
 		if (input.length() != 2) {
@@ -693,8 +698,7 @@ final class WhatWgUrlParser {
 	}
 
 	/**
-	 * A string starts with a Windows drive letter if all of the following are true:
-	 *
+	 * A string starts with a Windows drive letter if all the following are true:
 	 * its length is greater than or equal to 2
 	 * its first two code points are a Windows drive letter
 	 * its length is 2 or its third code point is U+002F (/), U+005C (\), U+003F (?), or U+0023 (#).
@@ -755,12 +759,11 @@ final class WhatWgUrlParser {
 					p.append(Character.toLowerCase((char) c));
 					p.setState(SCHEME);
 				}
-				// EXTRA: if c is '{', then append c to buffer, set previous state to scheme state,
-				// and state to url template state.
-				else if (p.previousState != URL_TEMPLATE && c == '{') {
+				// EXTRA: if c is '{', append to buffer and continue as SCHEME
+				else if (c == '{') {
+					p.openCurlyBracketCount++;
 					p.append(c);
-					p.previousState = SCHEME;
-					p.state = URL_TEMPLATE;
+					p.setState(SCHEME);
 				}
 				// Otherwise, if state override is not given,
 				// set state to no scheme state and decrease pointer by 1.
@@ -780,11 +783,6 @@ final class WhatWgUrlParser {
 				// If c is an ASCII alphanumeric, U+002B (+), U+002D (-), or U+002E (.), append c, lowercased, to buffer.
 				if (isAsciiAlphaNumeric(c) || (c == '+' || c == '-' || c == '.')) {
 					p.append(Character.toLowerCase((char) c));
-				}
-				// EXTRA: if c is '{', then append c to buffer, set state to url template state.
-				else if (p.previousState != URL_TEMPLATE && c == '{') {
-					p.append(c);
-					p.setState(URL_TEMPLATE);
 				}
 				// Otherwise, if c is U+003A (:), then:
 				else if (c == ':') {
@@ -857,6 +855,10 @@ final class WhatWgUrlParser {
 						url.path = new PathSegment("");
 						p.setState(OPAQUE_PATH);
 					}
+				}
+				// EXTRA: if c is within URI variable, keep appending
+				else if (p.processCurlyBrackets(c)) {
+					p.append(c);
 				}
 				// Otherwise, if state override is not given, set buffer to the empty string,
 				// state to no scheme state, and start over (from the first code point in input).
@@ -1200,7 +1202,6 @@ final class WhatWgUrlParser {
 					// If state override is given, then return.
 					if (p.stateOverride != null) {
 						p.stopMainLoop = true;
-						return;
 					}
 				}
 				// Otherwise:
@@ -1224,11 +1225,6 @@ final class WhatWgUrlParser {
 				// If c is an ASCII digit, append c to buffer.
 				if (isAsciiDigit(c)) {
 					p.append(c);
-				}
-				// EXTRA: if c is '{', then append c to buffer, set state to url template state.
-				else if (p.previousState != URL_TEMPLATE && c == '{') {
-					p.append(c);
-					p.setState(URL_TEMPLATE);
 				}
 				// Otherwise, if one of the following is true:
 				// - c is the EOF code point, U+002F (/), U+003F (?), or U+0023 (#)
@@ -1278,6 +1274,10 @@ final class WhatWgUrlParser {
 					// Set state to path start state and decrease pointer by 1.
 					p.setState(PATH_START);
 					p.pointer--;
+				}
+				// EXTRA: if c is within URI variable, keep appending
+				else if (p.processCurlyBrackets(c)) {
+					p.append(c);
 				}
 				// Otherwise, port-invalid validation error, return failure.
 				else {
@@ -1547,11 +1547,6 @@ final class WhatWgUrlParser {
 						p.setState(FRAGMENT);
 					}
 				}
-				// EXTRA: Otherwise, if c is '{', then append c to buffer, set state to url template state.
-				else if (p.previousState != URL_TEMPLATE && c == '{') {
-					p.append(c);
-					p.setState(URL_TEMPLATE);
-				}
 				// Otherwise, run these steps:
 				else {
 					if (p.validate()) {
@@ -1582,12 +1577,6 @@ final class WhatWgUrlParser {
 		OPAQUE_PATH {
 			@Override
 			public void handle(int c, UrlRecord url, WhatWgUrlParser p) {
-				// EXTRA: if previous state is URL Template and the buffer is empty,
-				// append buffer to url's path and empty the buffer
-				if (p.previousState == URL_TEMPLATE && !p.buffer.isEmpty()) {
-					url.path.append(p.buffer.toString());
-					p.emptyBuffer();
-				}
 				// If c is U+003F (?), then set url’s query to the empty string and state to query state.
 				if (c == '?') {
 					url.query = new StringBuilder();
@@ -1598,11 +1587,6 @@ final class WhatWgUrlParser {
 				else if (c == '#') {
 					url.fragment = new StringBuilder();
 					p.setState(FRAGMENT);
-				}
-				// EXTRA: Otherwise, if c is '{', then append c to buffer, set state to url template state.
-				else if (p.previousState != URL_TEMPLATE && c == '{') {
-					p.append(c);
-					p.setState(URL_TEMPLATE);
 				}
 				// Otherwise:
 				else {
@@ -1668,13 +1652,8 @@ final class WhatWgUrlParser {
 						p.setState(FRAGMENT);
 					}
 				}
-				// EXTRA: Otherwise, if c is '{', then append c to buffer, set state to url template state.
-				else if (p.previousState != URL_TEMPLATE && c == '{') {
-					p.append(c);
-					p.setState(URL_TEMPLATE);
-				}
 				// Otherwise, if c is not the EOF code point:
-				else if (c != EOF) {
+				else {
 					if (p.validate()) {
 						// If c is not a URL code point and not U+0025 (%), invalid-URL-unit validation error.
 						if (!isUrlCodePoint(c) && c != '%') {
@@ -1723,24 +1702,6 @@ final class WhatWgUrlParser {
 					else {
 						url.fragment.appendCodePoint(c);
 					}
-				}
-			}
-		},
-		URL_TEMPLATE {
-			@Override
-			public void handle(int c, UrlRecord url, WhatWgUrlParser p) {
-				Assert.state(p.previousState != null, "No previous state set");
-				if (c == '}') {
-					p.append(c);
-					p.setState(p.previousState);
-				}
-				else if (c == EOF) {
-					p.pointer -= p.buffer.length() + 1;
-					p.emptyBuffer();
-					p.setState(p.previousState);
-				}
-				else {
-					p.append(c);
 				}
 			}
 		};
@@ -1806,39 +1767,6 @@ final class WhatWgUrlParser {
 
 
 		/**
-		 * The serialization of an origin is the string obtained by applying
-		 * the following algorithm to the given origin:
-		 * <ol>
-		 * <li>If origin is an opaque origin, then return "null".
-		 * <li>Otherwise, let result be origin's scheme.
-		 * <li>Append "://" to result.
-		 * Append origin's host, serialized, to result.
-		 * <li>If origin's port is non-null, append a U+003A COLON character (:),
-		 * and origin's port, serialized, to result.
-		 * <li>Return result.
-		 * </ol>
-		 */
-		public String origin() {
-			String scheme = scheme();
-			if (scheme.equals("ftp") ||
-					scheme.equals("http") || scheme.equals("https") ||
-					scheme.equals("ws") || scheme.equals("wss")) {
-				StringBuilder builder = new StringBuilder(scheme);
-				builder.append("://");
-				builder.append(host());
-				Port port = port();
-				if (port != null) {
-					builder.append(':');
-					builder.append(port);
-				}
-				return builder.toString();
-			}
-			else {
-				return "null";
-			}
-		}
-
-		/**
 		 * A URL’s scheme is an ASCII string that identifies the type of URL and
 		 * can be used to dispatch a URL for further processing after parsing.
 		 * It is initially the empty string.
@@ -1850,6 +1778,7 @@ final class WhatWgUrlParser {
 		/**
 		 * The protocol getter steps are to return this’s URL’s scheme, followed by U+003A (:).
 		 */
+		@SuppressWarnings("unused")
 		public String protocol() {
 			return scheme() + ":";
 		}
@@ -1935,6 +1864,7 @@ final class WhatWgUrlParser {
 		 * <li>Return url’s host, serialized, followed by U+003A (:) and url’s port, serialized.
 		 * </ol>
 		 */
+		@SuppressWarnings("unused")
 		public String hostString() {
 			if (host() == null) {
 				return "";
@@ -2037,6 +1967,7 @@ final class WhatWgUrlParser {
 		 * <li>Return U+0023 (#), followed by this’s URL’s fragment.
 		 * </ol>
 		 */
+		@SuppressWarnings("unused")
 		public String hash() {
 			String fragment = fragment();
 			return (fragment != null && !fragment.isEmpty() ? "#" + fragment : "");
@@ -2284,6 +2215,7 @@ final class WhatWgUrlParser {
 			}
 		}
 
+		@SuppressWarnings("unused")
 		public IpAddress address() {
 			return this.address;
 		}
@@ -2812,7 +2744,7 @@ final class WhatWgUrlParser {
 			}
 			// Otherwise, if compress is null and pieceIndex is not 8,
 			// IPv6-too-few-pieces validation error, return failure.
-			else if (compress == null && pieceIndex != 8) {
+			else if (pieceIndex != 8) {
 				throw new InvalidUrlException("An uncompressed IPv6 address contains fewer than 8 pieces.");
 			}
 			// Return address.
@@ -3055,6 +2987,7 @@ final class WhatWgUrlParser {
 			return true;
 		}
 
+		@SuppressWarnings("MethodDoesntCallSuperMethod")
 		@Override
 		public Path clone() {
 			return new PathSegment(segment());
@@ -3139,6 +3072,7 @@ final class WhatWgUrlParser {
 			return false;
 		}
 
+		@SuppressWarnings("MethodDoesntCallSuperMethod")
 		@Override
 		public Path clone() {
 			return new PathSegments(this.segments);
