@@ -23,6 +23,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
 import java.util.Arrays;
 import java.util.Collections;
@@ -224,9 +225,10 @@ public abstract class BeanUtils {
 
 	/**
 	 * Return a resolvable constructor for the provided class, either a primary or single
-	 * public constructor with arguments, or a single non-public constructor with arguments,
-	 * or simply a default constructor. Callers have to be prepared to resolve arguments
-	 * for the returned constructor's parameters, if any.
+	 * public constructor with arguments, a single non-public constructor with arguments
+	 * or simply a default constructor.
+	 * <p>Callers have to be prepared to resolve arguments for the returned constructor's
+	 * parameters, if any.
 	 * @param clazz the class to check
 	 * @throws IllegalStateException in case of no unique constructor found at all
 	 * @since 5.3
@@ -268,17 +270,31 @@ public abstract class BeanUtils {
 	/**
 	 * Return the primary constructor of the provided class. For Kotlin classes, this
 	 * returns the Java constructor corresponding to the Kotlin primary constructor
-	 * (as defined in the Kotlin specification). Otherwise, in particular for non-Kotlin
-	 * classes, this simply returns {@code null}.
+	 * (as defined in the Kotlin specification). For Java records, this returns the
+	 * canonical constructor. Otherwise, this simply returns {@code null}.
 	 * @param clazz the class to check
 	 * @since 5.0
-	 * @see <a href="https://kotlinlang.org/docs/reference/classes.html#constructors">Kotlin docs</a>
+	 * @see <a href="https://kotlinlang.org/docs/reference/classes.html#constructors">Kotlin constructors</a>
+	 * @see <a href="https://docs.oracle.com/javase/specs/jls/se17/html/jls-8.html#jls-8.10.4">Record constructor declarations</a>
 	 */
 	@Nullable
 	public static <T> Constructor<T> findPrimaryConstructor(Class<T> clazz) {
 		Assert.notNull(clazz, "Class must not be null");
 		if (KotlinDetector.isKotlinReflectPresent() && KotlinDetector.isKotlinType(clazz)) {
 			return KotlinDelegate.findPrimaryConstructor(clazz);
+		}
+		if (clazz.isRecord()) {
+			try {
+				// Use the canonical constructor which is always present
+				RecordComponent[] components = clazz.getRecordComponents();
+				Class<?>[] paramTypes = new Class<?>[components.length];
+				for (int i = 0; i < components.length; i++) {
+					paramTypes[i] = components[i].getType();
+				}
+				return clazz.getDeclaredConstructor(paramTypes);
+			}
+			catch (NoSuchMethodException ignored) {
+			}
 		}
 		return null;
 	}

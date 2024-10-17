@@ -510,7 +510,7 @@ abstract class RfcUriParser {
 
 		public InternalParser captureScheme() {
 			String scheme = captureComponent("scheme");
-			this.scheme = (!scheme.startsWith("{") ? scheme.toLowerCase(Locale.ROOT) : scheme);
+			this.scheme = (!scheme.contains("{") ? scheme.toLowerCase(Locale.ROOT) : scheme);
 			return this;
 		}
 

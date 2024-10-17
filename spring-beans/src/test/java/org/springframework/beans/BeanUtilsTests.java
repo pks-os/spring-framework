@@ -521,10 +521,36 @@ class BeanUtilsTests {
 		assertThat(BeanUtils.isSimpleProperty(type)).as("Type [" + type.getName() + "] should not be a simple property").isFalse();
 	}
 
+	@Test
+	void resolveMultipleRecordPublicConstructor() throws NoSuchMethodException {
+		assertThat(BeanUtils.getResolvableConstructor(RecordWithMultiplePublicConstructors.class))
+				.isEqualTo(RecordWithMultiplePublicConstructors.class.getDeclaredConstructor(String.class, String.class));
+	}
+
+	@Test
+	void resolveMultipleRecordePackagePrivateConstructor() throws NoSuchMethodException {
+		assertThat(BeanUtils.getResolvableConstructor(RecordWithMultiplePackagePrivateConstructors.class))
+				.isEqualTo(RecordWithMultiplePackagePrivateConstructors.class.getDeclaredConstructor(String.class, String.class));
+	}
+
 	private void assertSignatureEquals(Method desiredMethod, String signature) {
 		assertThat(BeanUtils.resolveSignature(signature, MethodSignatureBean.class)).isEqualTo(desiredMethod);
 	}
 
+
+	public record RecordWithMultiplePublicConstructors(String value, String name) {
+		@SuppressWarnings("unused")
+		public RecordWithMultiplePublicConstructors(String value) {
+			this(value, "default value");
+		}
+	}
+
+	record RecordWithMultiplePackagePrivateConstructors(String value, String name) {
+		@SuppressWarnings("unused")
+		RecordWithMultiplePackagePrivateConstructors(String value) {
+			this(value, "default value");
+		}
+	}
 
 	@SuppressWarnings("unused")
 	private static class NumberHolder {
