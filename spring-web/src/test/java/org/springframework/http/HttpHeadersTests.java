@@ -213,6 +213,15 @@ class HttpHeadersTests {
 		assertThat(headers.getFirst("Host")).as("Invalid Host header").isEqualTo("[::1]");
 	}
 
+	@Test // gh-33716
+	void hostDeletion() {
+		InetSocketAddress host = InetSocketAddress.createUnresolved("localhost", 8080);
+		headers.setHost(host);
+		headers.setHost(null);
+		assertThat(headers.getHost()).as("Host is not deleted").isEqualTo(null);
+		assertThat(headers.getFirst("Host")).as("Host is not deleted").isEqualTo(null);
+	}
+
 	@Test
 	void eTagWithoutQuotes() {
 		headers.setETag("v2.6");
