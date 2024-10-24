@@ -30,7 +30,6 @@ import org.springframework.core.ResolvableType;
 import org.springframework.lang.Nullable;
 import org.springframework.test.context.bean.override.BeanOverrideHandler;
 import org.springframework.test.context.bean.override.BeanOverrideStrategy;
-import org.springframework.test.util.AopTestUtils;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
@@ -40,19 +39,24 @@ import org.springframework.util.StringUtils;
  * @author Phillip Webb
  * @author Simon Baslé
  * @author Stephane Nicoll
+ * @author Sam Brannen
  * @since 6.2
  */
 class MockitoSpyBeanOverrideHandler extends AbstractMockitoBeanOverrideHandler {
 
+	private static final VerificationStartedListener verificationStartedListener =
+			new SpringAopBypassingVerificationStartedListener();
+
+
 	MockitoSpyBeanOverrideHandler(Field field, ResolvableType typeToSpy, MockitoSpyBean spyAnnotation) {
 		this(field, typeToSpy, (StringUtils.hasText(spyAnnotation.name()) ? spyAnnotation.name() : null),
-				spyAnnotation.reset(), spyAnnotation.proxyTargetAware());
+				spyAnnotation.reset());
 	}
 
 	MockitoSpyBeanOverrideHandler(Field field, ResolvableType typeToSpy, @Nullable String beanName,
-			MockReset reset, boolean proxyTargetAware) {
+			MockReset reset) {
 
-		super(field, typeToSpy, beanName, BeanOverrideStrategy.WRAP, reset, proxyTargetAware);
+		super(field, typeToSpy, beanName, BeanOverrideStrategy.WRAP, reset);
 		Assert.notNull(typeToSpy, "typeToSpy must not be null");
 	}
 
@@ -66,7 +70,6 @@ class MockitoSpyBeanOverrideHandler extends AbstractMockitoBeanOverrideHandler {
 		return createSpy(beanName, existingBeanInstance);
 	}
 
-	@SuppressWarnings("unchecked")
 	private Object createSpy(String name, Object instance) {
 		Class<?> resolvedTypeToOverride = getBeanType().resolve();
 		Assert.notNull(resolvedTypeToOverride, "Failed to resolve type to override");
@@ -74,13 +77,15 @@ class MockitoSpyBeanOverrideHandler extends AbstractMockitoBeanOverrideHandler {
 		if (Mockito.mockingDetails(instance).isSpy()) {
 			return instance;
 		}
+
 		MockSettings settings = MockReset.withSettings(getReset());
 		if (StringUtils.hasLength(name)) {
 			settings.name(name);
 		}
-		if (isProxyTargetAware()) {
-			settings.verificationStartedListeners(new SpringAopBypassingVerificationStartedListener());
+		if (SpringMockResolver.aopAvailable) {
+			settings.verificationStartedListeners(verificationStartedListener);
 		}
+
 		Class<?> toSpy;
 		if (Proxy.isProxyClass(instance.getClass())) {
 			settings.defaultAnswer(AdditionalAnswers.delegatesTo(instance));
@@ -103,7 +108,7 @@ class MockitoSpyBeanOverrideHandler extends AbstractMockitoBeanOverrideHandler {
 
 		@Override
 		public void onVerificationStarted(VerificationStartedEvent event) {
-			event.setMock(AopTestUtils.getUltimateTargetObject(event.getMock()));
+			event.setMock(SpringMockResolver.getUltimateTargetObject(event.getMock()));
 		}
 	}
 

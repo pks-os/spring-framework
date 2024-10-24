@@ -45,6 +45,7 @@ import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.http.client.observation.ClientRequestObservationConvention;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.lang.Nullable;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.util.DefaultUriBuilderFactory;
 import org.springframework.web.util.UriBuilder;
 import org.springframework.web.util.UriBuilderFactory;
@@ -313,6 +314,23 @@ public interface RestClient {
 		Builder defaultHeaders(Consumer<HttpHeaders> headersConsumer);
 
 		/**
+		 * Global option to specify a cookie to be added to every request,
+		 * if the request does not already contain such a cookie.
+		 * @param cookie the cookie name
+		 * @param values the cookie values
+		 * @since 6.2
+		 */
+		Builder defaultCookie(String cookie, String... values);
+
+		/**
+		 * Provides access to every {@link #defaultCookie(String, String...)}
+		 * declared so far with the possibility to add, replace, or remove.
+		 * @param cookiesConsumer a function that consumes the cookies map
+		 * @since 6.2
+		 */
+		Builder defaultCookies(Consumer<MultiValueMap<String, String>> cookiesConsumer);
+
+		/**
 		 * Provide a consumer to customize every request being built.
 		 * @param defaultRequest the consumer to use for modifying requests
 		 * @return this builder
@@ -520,6 +538,24 @@ public interface RestClient {
 		S acceptCharset(Charset... acceptableCharsets);
 
 		/**
+		 * Add a cookie with the given name and value.
+		 * @param name the cookie name
+		 * @param value the cookie value
+		 * @return this builder
+		 * @since 6.2
+		 */
+		S cookie(String name, String value);
+
+		/**
+		 * Provides access to every cookie declared so far with the possibility
+		 * to add, replace, or remove values.
+		 * @param cookiesConsumer the consumer to provide access to
+		 * @return this builder
+		 * @since 6.2
+		 */
+		S cookies(Consumer<MultiValueMap<String, String>> cookiesConsumer);
+
+		/**
 		 * Set the value of the {@code If-Modified-Since} header.
 		 * @param ifModifiedSince the new value of the header
 		 * @return this builder
@@ -579,8 +615,10 @@ public interface RestClient {
 		S httpRequest(Consumer<ClientHttpRequest> requestConsumer);
 
 		/**
-		 * Proceed to declare how to extract the response. For example to extract
-		 * a {@link ResponseEntity} with status, headers, and body:
+		 * Enter the retrieve workflow and use the returned {@link ResponseSpec}
+		 * to select from a number of built-in options to extract the response.
+		 * For example:
+		 *
 		 * <pre class="code">
 		 * ResponseEntity&lt;Person&gt; entity = client.get()
 		 *     .uri("/persons/1")
@@ -596,6 +634,10 @@ public interface RestClient {
 		 *     .retrieve()
 		 *     .body(Person.class);
 		 * </pre>
+		 * Note that this method does not actually execute the request until you
+		 * call one of the returned {@link ResponseSpec}. Use the
+		 * {@link #exchange(ExchangeFunction)} variants if you need to separate
+		 * request execution from response extraction.
 		 * <p>By default, 4xx response code result in a
 		 * {@link HttpClientErrorException} and 5xx response codes in a
 		 * {@link HttpServerErrorException}. To customize error handling, use
@@ -628,6 +670,7 @@ public interface RestClient {
 		 * @param <T> the type the response will be transformed to
 		 * @return the value returned from the exchange function
 		 */
+		@Nullable
 		default <T> T exchange(ExchangeFunction<T> exchangeFunction) {
 			return exchange(exchangeFunction, true);
 		}
@@ -659,6 +702,7 @@ public interface RestClient {
 		 * @param <T> the type the response will be transformed to
 		 * @return the value returned from the exchange function
 		 */
+		@Nullable
 		<T> T exchange(ExchangeFunction<T> exchangeFunction, boolean close);
 
 
@@ -676,6 +720,7 @@ public interface RestClient {
 			 * @return the exchanged type
 			 * @throws IOException in case of I/O errors
 			 */
+			@Nullable
 			T exchange(HttpRequest clientRequest, ConvertibleClientHttpResponse clientResponse) throws IOException;
 		}
 
