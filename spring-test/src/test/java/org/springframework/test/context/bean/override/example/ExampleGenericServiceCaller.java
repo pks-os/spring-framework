@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2024 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,25 +17,18 @@
 package org.springframework.test.context.bean.override.example;
 
 /**
- * Example bean for tests that call the {@link ExampleService}.
+ * Example bean that has dependencies on parameterized {@link ExampleGenericService}
+ * collaborators.
  *
+ * @author Sam Brannen
  * @author Phillip Webb
  * @since 6.2
  */
-public class ExampleServiceCaller {
-
-	private final ExampleService service;
-
-	public ExampleServiceCaller(ExampleService service) {
-		this.service = service;
-	}
-
-	public ExampleService getService() {
-		return this.service;
-	}
+public record ExampleGenericServiceCaller(ExampleGenericService<Integer> integerService,
+		ExampleGenericService<String> stringService) {
 
 	public String sayGreeting() {
-		return "I say " + this.service.greeting();
+		return "I say " + this.stringService.greeting() + " " + this.integerService.greeting();
 	}
 
 }
