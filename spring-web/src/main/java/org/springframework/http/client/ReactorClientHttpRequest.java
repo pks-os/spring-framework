@@ -53,19 +53,50 @@ final class ReactorClientHttpRequest extends AbstractStreamingClientHttpRequest 
 
 	private final URI uri;
 
+	@Nullable
 	private final Duration exchangeTimeout;
 
-	private final Duration readTimeout;
 
+	/**
+	 * Create an instance.
+	 * @param httpClient the client to perform the request with
+	 * @param method the HTTP method
+	 * @param uri the URI for the request
+	 * @since 6.2
+	 */
+	public ReactorClientHttpRequest(HttpClient httpClient, HttpMethod method, URI uri) {
+		this.httpClient = httpClient;
+		this.method = method;
+		this.uri = uri;
+		this.exchangeTimeout = null;
+	}
 
-	public ReactorClientHttpRequest(HttpClient httpClient, URI uri, HttpMethod method,
-									Duration exchangeTimeout, Duration readTimeout) {
+	/**
+	 * Package private constructor for use until exchangeTimeout is removed.
+	 */
+	ReactorClientHttpRequest(HttpClient httpClient, HttpMethod method, URI uri, @Nullable Duration exchangeTimeout) {
+		this.httpClient = httpClient;
+		this.method = method;
+		this.uri = uri;
+		this.exchangeTimeout = exchangeTimeout;
+	}
+
+	/**
+	 * Original constructor with timeout values.
+	 * @deprecated without a replacement; readTimeout is now applied to the
+	 * underlying client via {@link HttpClient#responseTimeout(Duration)}, and the
+	 * value passed here is not used; exchangeTimeout is deprecated and superseded
+	 * by Reactor Netty timeout configuration, but applied if set.
+	 */
+	@Deprecated(since = "6.2", forRemoval = true)
+	public ReactorClientHttpRequest(
+			HttpClient httpClient, URI uri, HttpMethod method,
+			@Nullable Duration exchangeTimeout, @Nullable Duration readTimeout) {
 
 		this.httpClient = httpClient;
 		this.method = method;
 		this.uri = uri;
 		this.exchangeTimeout = exchangeTimeout;
-		this.readTimeout = readTimeout;
 	}
 
 
@@ -82,55 +113,52 @@ final class ReactorClientHttpRequest extends AbstractStreamingClientHttpRequest 
 
 	@Override
 	protected ClientHttpResponse executeInternal(HttpHeaders headers, @Nullable Body body) throws IOException {
-		HttpClient.RequestSender requestSender = this.httpClient
+
+		HttpClient.RequestSender sender = this.httpClient
 				.request(io.netty.handler.codec.http.HttpMethod.valueOf(this.method.name()));
 
-		requestSender = (this.uri.isAbsolute() ? requestSender.uri(this.uri) : requestSender.uri(this.uri.toString()));
+		sender = (this.uri.isAbsolute() ? sender.uri(this.uri) : sender.uri(this.uri.toString()));
 
 		try {
-			ReactorClientHttpResponse result = requestSender.send((reactorRequest, nettyOutbound) ->
-					send(headers, body, reactorRequest, nettyOutbound))
-					.responseConnection((reactorResponse, connection) ->
-							Mono.just(new ReactorClientHttpResponse(reactorResponse, connection, this.readTimeout)))
-					.next()
-					.block(this.exchangeTimeout);
+			Mono<ReactorClientHttpResponse> mono =
+					sender.send((request, outbound) -> send(headers, body, request, outbound))
+							.responseConnection((response, conn) -> Mono.just(new ReactorClientHttpResponse(response, conn)))
+							.next();
 
-			if (result == null) {
+			ReactorClientHttpResponse clientResponse =
+					(this.exchangeTimeout != null ? mono.block(this.exchangeTimeout) : mono.block());
+
+			if (clientResponse == null) {
 				throw new IOException("HTTP exchange resulted in no result");
 			}
-			else {
-				return result;
-			}
+
+			return clientResponse;
 		}
 		catch (RuntimeException ex) {
 			throw convertException(ex);
 		}
 	}
 
-	private Publisher<Void> send(HttpHeaders headers, @Nullable Body body,
-			HttpClientRequest reactorRequest, NettyOutbound nettyOutbound) {
+	private Publisher<Void> send(
+			HttpHeaders headers, @Nullable Body body, HttpClientRequest request, NettyOutbound outbound) {
 
-		headers.forEach((key, value) -> reactorRequest.requestHeaders().set(key, value));
+		headers.forEach((key, value) -> request.requestHeaders().set(key, value));
 
-		if (body != null) {
-			ByteBufMapper byteMapper = new ByteBufMapper(nettyOutbound.alloc());
-			AtomicReference<Executor> executor = new AtomicReference<>();
-
-			return nettyOutbound
-					.withConnection(connection -> executor.set(connection.channel().eventLoop()))
-					.send(FlowAdapters.toPublisher(new OutputStreamPublisher<>(
-							os -> body.writeTo(StreamUtils.nonClosing(os)), byteMapper,
-							executor.getAndSet(null), null)));
+		if (body == null) {
+			return outbound;
 		}
-		else {
-			return nettyOutbound;
-		}
+
+		AtomicReference<Executor> executorRef = new AtomicReference<>();
+
+		return outbound
+				.withConnection(connection -> executorRef.set(connection.channel().eventLoop()))
+				.send(FlowAdapters.toPublisher(new OutputStreamPublisher<>(
+						os -> body.writeTo(StreamUtils.nonClosing(os)), new ByteBufMapper(outbound),
+						executorRef.getAndSet(null), null)));
 	}
 
 	static IOException convertException(RuntimeException ex) {
-		// Exceptions.ReactiveException is package private
-		Throwable cause = ex.getCause();
-
+		Throwable cause = ex.getCause(); // Exceptions.ReactiveException is private
 		if (cause instanceof IOException ioEx) {
 			return ioEx;
 		}
@@ -148,22 +176,22 @@ final class ReactorClientHttpRequest extends AbstractStreamingClientHttpRequest 
 
 		private final ByteBufAllocator allocator;
 
-		public ByteBufMapper(ByteBufAllocator allocator) {
-			this.allocator = allocator;
+		public ByteBufMapper(NettyOutbound outbound) {
+			this.allocator = outbound.alloc();
 		}
 
 		@Override
 		public ByteBuf map(int b) {
-			ByteBuf byteBuf = this.allocator.buffer(1);
-			byteBuf.writeByte(b);
-			return byteBuf;
+			ByteBuf buf = this.allocator.buffer(1);
+			buf.writeByte(b);
+			return buf;
 		}
 
 		@Override
 		public ByteBuf map(byte[] b, int off, int len) {
-			ByteBuf byteBuf = this.allocator.buffer(len);
-			byteBuf.writeBytes(b, off, len);
-			return byteBuf;
+			ByteBuf buf = this.allocator.buffer(len);
+			buf.writeBytes(b, off, len);
+			return buf;
 		}
 	}
 
