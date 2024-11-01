@@ -26,8 +26,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Flow;
 
 import org.junit.jupiter.api.Test;
-import org.reactivestreams.FlowAdapters;
-import reactor.test.StepVerifier;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -68,22 +66,7 @@ class SubscriberInputStreamTests {
 
 
 	@Test
-	void basic() {
-		Flow.Publisher<byte[]> publisher = new OutputStreamPublisher<>(
-				out -> {
-					out.write(FOO);
-					out.write(BAR);
-					out.write(BAZ);
-				},
-				this.byteMapper, this.executor, null);
-
-		StepVerifier.create(FlowAdapters.toPublisher(publisher))
-				.assertNext(s -> assertThat(s).containsExactly("foobarbaz".getBytes(UTF_8)))
-				.verifyComplete();
-	}
-
-	@Test
-	void flush() throws IOException {
+	void basic() throws IOException {
 		Flow.Publisher<byte[]> publisher = new OutputStreamPublisher<>(
 				out -> {
 					out.write(FOO);
@@ -115,7 +98,7 @@ class SubscriberInputStreamTests {
 	}
 
 	@Test
-	void chunkSize() {
+	void chunkSize() throws Exception {
 		Flow.Publisher<byte[]> publisher = new OutputStreamPublisher<>(
 				out -> {
 					out.write(FOO);
@@ -127,43 +110,47 @@ class SubscriberInputStreamTests {
 		try (SubscriberInputStream<byte[]> is = new SubscriberInputStream<>(s -> s, s -> {}, 1)) {
 			publisher.subscribe(is);
 
-			StringBuilder stringBuilder = new StringBuilder();
+			StringBuilder sb = new StringBuilder();
 			byte[] chunk = new byte[3];
 
-			stringBuilder.append(new String(new byte[]{(byte)is.read()}, UTF_8));
-			assertThat(is.read(chunk)).isEqualTo(3);
+			sb.append((char) is.read());
+			assertThat(sb).matches("f");
 
-			stringBuilder.append(new String(chunk, UTF_8));
 			assertThat(is.read(chunk)).isEqualTo(3);
+			sb.append(new String(chunk, UTF_8));
+			assertThat(sb).matches("foob");
 
-			stringBuilder.append(new String(chunk, UTF_8));
+			assertThat(is.read(chunk)).isEqualTo(3);
+			sb.append(new String(chunk, UTF_8));
+			assertThat(sb).matches("foobarb");
+
 			assertThat(is.read(chunk)).isEqualTo(2);
+			sb.append(new String(chunk,0, 2, UTF_8));
+			assertThat(sb).matches("foobarbaz");
 
-			stringBuilder.append(new String(chunk,0, 2, UTF_8));
 			assertThat(is.read()).isEqualTo(-1);
-			assertThat(stringBuilder.toString()).isEqualTo("foobarbaz");
-		}
-		catch (IOException e) {
-			throw new RuntimeException(e);
 		}
 	}
 
 	@Test
-	void cancel() throws InterruptedException, IOException {
-		CountDownLatch latch = new CountDownLatch(1);
+	void cancel() throws Exception {
+		CountDownLatch latch1 = new CountDownLatch(1);
+		CountDownLatch latch2 = new CountDownLatch(1);
 
 		Flow.Publisher<byte[]> publisher = new OutputStreamPublisher<>(
 				out -> {
-					assertThatIOException().isThrownBy(() -> {
+					assertThatIOException()
+							.isThrownBy(() -> {
 								out.write(FOO);
 								out.flush();
 								out.write(BAR);
 								out.flush();
+								latch1.countDown();
 								out.write(BAZ);
 								out.flush();
-							}).withMessage("Subscription has been terminated");
-					latch.countDown();
-
+							})
+							.withMessage("Subscription has been terminated");
+					latch2.countDown();
 				}, this.byteMapper, this.executor, null);
 
 		List<byte[]> discarded = new ArrayList<>();
@@ -174,10 +161,11 @@ class SubscriberInputStreamTests {
 
 			assertThat(is.read(chunk)).isEqualTo(3);
 			assertThat(chunk).containsExactly(FOO);
+
+			latch1.await();
 		}
 
-		latch.await();
-
+		latch2.await();
 		assertThat(discarded).containsExactly("bar".getBytes(UTF_8));
 	}
 
@@ -201,6 +189,7 @@ class SubscriberInputStreamTests {
 
 			assertThat(is.read(chunk)).isEqualTo(3);
 			assertThat(chunk).containsExactly(FOO);
+
 			assertThat(is.read(chunk)).isEqualTo(-1);
 		}
 
@@ -215,7 +204,8 @@ class SubscriberInputStreamTests {
 				out -> {
 					out.write(FOO);
 					out.flush();
-					assertThatIOException().isThrownBy(() -> {
+					assertThatIOException()
+							.isThrownBy(() -> {
 								out.write(BAR);
 								out.flush();
 							})
