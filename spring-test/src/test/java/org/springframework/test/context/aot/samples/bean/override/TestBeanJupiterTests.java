@@ -14,33 +14,30 @@
  * limitations under the License.
  */
 
-package org.springframework.test.context.hierarchies.meta;
+package org.springframework.test.context.aot.samples.bean.override;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.test.context.aot.DisabledInAotMode;
+import org.springframework.test.context.aot.samples.common.GreetingService;
+import org.springframework.test.context.bean.override.convention.TestBean;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * @author Sam Brannen
- * @since 4.0.3
+ * @since 6.2
  */
 @ExtendWith(SpringExtension.class)
-@MetaMetaContextHierarchyConfig
-@DisabledInAotMode("@ContextHierarchy is not supported in AOT")
-class MetaHierarchyLevelOneTests {
+public class TestBeanJupiterTests {
 
-	@Autowired
-	private String foo;
-
+	@TestBean(methodName = "org.springframework.test.context.aot.samples.bean.override.GreetingServiceFactory#createEnigmaGreetingService")
+	GreetingService greetingService;
 
 	@Test
-	void foo() {
-		assertThat(foo).isEqualTo("Dev Foo");
+	void test() {
+		assertThat(greetingService.greeting()).isEqualTo("enigma");
 	}
 
 }
