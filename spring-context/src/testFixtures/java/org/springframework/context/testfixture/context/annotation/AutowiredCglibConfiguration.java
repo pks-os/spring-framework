@@ -14,20 +14,22 @@
  * limitations under the License.
  */
 
-package org.springframework.docs.integration.jmx.jmxexporting
+package org.springframework.context.testfixture.context.annotation;
 
-// tag::snippet[]
-class JmxTestBean : IJmxTestBean {
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 
-	override lateinit var name: String
-	override var age = 0
+@Configuration
+public class AutowiredCglibConfiguration {
 
-	override fun add(x: Int, y: Int): Int {
-		return x + y
+	@Autowired
+	private Environment environment;
+
+	@Bean
+	public String text() {
+		return this.environment.getProperty("hello") + " World";
 	}
 
-	override fun dontExposeMe() {
-		throw RuntimeException()
-	}
 }
-// end::snippet[]
