@@ -79,18 +79,13 @@ class AnnotationDrivenBeanDefinitionParserTests {
 	}
 
 	@Test
-	@SuppressWarnings("deprecation")
 	public void testPathMatchingConfiguration() {
 		loadBeanDefinitions("mvc-config-path-matching.xml");
 		RequestMappingHandlerMapping hm = this.appContext.getBean(RequestMappingHandlerMapping.class);
 		assertThat(hm).isNotNull();
-		assertThat(hm.useSuffixPatternMatch()).isTrue();
-		assertThat(hm.useTrailingSlashMatch()).isFalse();
-		assertThat(hm.useRegisteredSuffixPatternMatch()).isTrue();
 		assertThat(hm.getUrlPathHelper()).isInstanceOf(TestPathHelper.class);
 		assertThat(hm.getPathMatcher()).isInstanceOf(TestPathMatcher.class);
-		List<String> fileExtensions = hm.getContentNegotiationManager().getAllFileExtensions();
-		assertThat(fileExtensions).containsExactly("xml");
+		assertThat(hm.getPatternParser()).isNull();
 	}
 
 	@Test

@@ -321,22 +321,6 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 		initHandlerMapping(mapping, conversionService, resourceUrlProvider);
 
 		PathMatchConfigurer pathConfig = getPathMatchConfigurer();
-		if (pathConfig.preferPathMatcher()) {
-			Boolean useSuffixPatternMatch = pathConfig.isUseSuffixPatternMatch();
-			if (useSuffixPatternMatch != null) {
-				mapping.setUseSuffixPatternMatch(useSuffixPatternMatch);
-			}
-			Boolean useRegisteredSuffixPatternMatch = pathConfig.isUseRegisteredSuffixPatternMatch();
-			if (useRegisteredSuffixPatternMatch != null) {
-				mapping.setUseRegisteredSuffixPatternMatch(useRegisteredSuffixPatternMatch);
-			}
-		}
-
-		Boolean useTrailingSlashMatch = pathConfig.isUseTrailingSlashMatch();
-		if (useTrailingSlashMatch != null) {
-			mapping.setUseTrailingSlashMatch(useTrailingSlashMatch);
-		}
-
 		if (pathConfig.getPathPrefixes() != null) {
 			mapping.setPathPrefixes(pathConfig.getPathPrefixes());
 		}
@@ -446,7 +430,7 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	@Bean
 	public ContentNegotiationManager mvcContentNegotiationManager() {
 		if (this.contentNegotiationManager == null) {
-			ContentNegotiationConfigurer configurer = new ContentNegotiationConfigurer(this.servletContext);
+			ContentNegotiationConfigurer configurer = new ContentNegotiationConfigurer();
 			configurer.mediaTypes(getDefaultMediaTypes());
 			configureContentNegotiation(configurer);
 			this.contentNegotiationManager = configurer.buildContentNegotiationManager();
@@ -520,6 +504,8 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 		else if (pathConfig.getPatternParser() != null) {
 			mapping.setPatternParser(pathConfig.getPatternParser());
 		}
+		// else: AbstractHandlerMapping defaults to PathPatternParser
+
 		mapping.setInterceptors(getInterceptors(conversionService, resourceUrlProvider));
 		mapping.setCorsConfigurations(getCorsConfigurations());
 	}
