@@ -51,7 +51,6 @@ import org.springframework.core.type.AnnotationMetadata;
 import org.springframework.core.type.MethodMetadata;
 import org.springframework.core.type.StandardAnnotationMetadata;
 import org.springframework.core.type.StandardMethodMetadata;
-import org.springframework.lang.NonNull;
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.StringUtils;
@@ -448,7 +447,6 @@ class ConfigurationClassBeanDefinitionReader {
 		}
 
 		@Override
-		@NonNull
 		public MethodMetadata getFactoryMethodMetadata() {
 			return this.factoryMethodMetadata;
 		}

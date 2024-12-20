@@ -39,6 +39,7 @@ import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.http.MappingMatch;
 import jakarta.validation.constraints.NotNull;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -61,7 +62,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.json.AbstractJackson2HttpMessageConverter;
 import org.springframework.http.converter.xml.MappingJackson2XmlHttpMessageConverter;
-import org.springframework.lang.Nullable;
 import org.springframework.scheduling.concurrent.ConcurrentTaskExecutor;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.AntPathMatcher;
@@ -196,6 +196,7 @@ public class MvcNamespaceTests {
 	}
 
 
+	@SuppressWarnings("removal")
 	@Test
 	void testDefaultConfig() throws Exception {
 		loadBeanDefinitions("mvc-config.xml");
@@ -325,6 +326,7 @@ public class MvcNamespaceTests {
 		doTestCustomValidator("mvc-config-custom-validator.xml");
 	}
 
+	@SuppressWarnings("removal")
 	private void doTestCustomValidator(String xml) throws Exception {
 		loadBeanDefinitions(xml);
 
@@ -379,6 +381,7 @@ public class MvcNamespaceTests {
 		assertThat(chain.getInterceptorList()).hasSize(3);
 	}
 
+	@SuppressWarnings("removal")
 	@Test
 	void testResources() throws Exception {
 		loadBeanDefinitions("mvc-config-resources.xml");
@@ -425,6 +428,7 @@ public class MvcNamespaceTests {
 				.isInstanceOf(NoResourceFoundException.class);
 	}
 
+	@SuppressWarnings("removal")
 	@Test
 	void testUseDeprecatedPathMatcher() throws Exception {
 		loadBeanDefinitions("mvc-config-deprecated-path-matcher.xml");
@@ -437,6 +441,7 @@ public class MvcNamespaceTests {
 		});
 	}
 
+	@SuppressWarnings("removal")
 	@Test
 	void testUsePathPatternParser() throws Exception {
 		loadBeanDefinitions("mvc-config-custom-pattern-parser.xml");
@@ -465,6 +470,7 @@ public class MvcNamespaceTests {
 		assertThat(handler.getCacheSeconds()).isEqualTo(3600);
 	}
 
+	@SuppressWarnings("removal")
 	@Test
 	void testResourcesWithResolversTransformers() {
 		loadBeanDefinitions("mvc-config-resources-chain.xml");
@@ -615,6 +621,7 @@ public class MvcNamespaceTests {
 		assertThat(interceptor2.getParamName()).isEqualTo("style");
 	}
 
+	@SuppressWarnings("removal")
 	@Test
 	void testViewControllers() throws Exception {
 		loadBeanDefinitions("mvc-config-view-controllers.xml");
@@ -911,6 +918,7 @@ public class MvcNamespaceTests {
 		assertThat(compositeResolver.getOrder()).isEqualTo(123);
 	}
 
+	@SuppressWarnings("removal")
 	@Test
 	void testPathMatchingHandlerMappings() {
 		loadBeanDefinitions("mvc-config-path-matching-mappings.xml");

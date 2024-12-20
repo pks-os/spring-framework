@@ -58,6 +58,7 @@ import jakarta.servlet.http.Part;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.xml.bind.annotation.XmlRootElement;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.aop.framework.autoproxy.DefaultAdvisorAutoProxyCreator;
@@ -97,7 +98,6 @@ import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.http.converter.xml.Jaxb2RootElementHttpMessageConverter;
 import org.springframework.http.converter.xml.MarshallingHttpMessageConverter;
-import org.springframework.lang.Nullable;
 import org.springframework.oxm.jaxb.Jaxb2Marshaller;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.ExtendedModelMap;
@@ -2905,7 +2905,7 @@ class ServletAnnotationControllerHandlerMethodTests extends AbstractServletHandl
 					tb = (TestBean) model.get("myCommand");
 				}
 				if (tb.getName() != null && tb.getName().endsWith("myDefaultName")) {
-					assertThat(tb.getDate().getYear()).isEqualTo(107);
+					assertThat(tb.getDate()).hasYear(2007);
 				}
 				Errors errors = (Errors) model.get(BindingResult.MODEL_KEY_PREFIX + "testBean");
 				if (errors == null) {
@@ -2915,8 +2915,7 @@ class ServletAnnotationControllerHandlerMethodTests extends AbstractServletHandl
 					throw new IllegalStateException();
 				}
 				if (model.containsKey("ITestBean")) {
-					boolean condition = model.get(BindingResult.MODEL_KEY_PREFIX + "ITestBean") instanceof Errors;
-					assertThat(condition).isTrue();
+					assertThat(model.get(BindingResult.MODEL_KEY_PREFIX + "ITestBean")).isInstanceOf(Errors.class);
 				}
 				@SuppressWarnings("unchecked")
 				List<TestBean> testBeans = (List<TestBean>) model.get("testBeanList");
@@ -2939,8 +2938,8 @@ class ServletAnnotationControllerHandlerMethodTests extends AbstractServletHandl
 		@Override
 		public View resolveViewName(String viewName, Locale locale) {
 			return (model, request, response) -> {
-					request.setAttribute("viewName", viewName);
-					request.getSession().setAttribute("model", model);
+				request.setAttribute("viewName", viewName);
+				request.getSession().setAttribute("model", model);
 			};
 		}
 	}

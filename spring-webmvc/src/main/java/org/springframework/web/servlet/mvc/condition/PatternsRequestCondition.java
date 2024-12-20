@@ -27,8 +27,8 @@ import java.util.List;
 import java.util.Set;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.jspecify.annotations.Nullable;
 
-import org.springframework.lang.Nullable;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
@@ -48,7 +48,11 @@ import org.springframework.web.util.pattern.PathPatternParser;
  *
  * @author Rossen Stoyanchev
  * @since 3.1
+ * @deprecated use of {@link PathMatcher} and {@link UrlPathHelper} is deprecated
+ * for use at runtime in web modules in favor of parsed patterns with
+ * {@link PathPatternParser}.
  */
+@Deprecated(since = "7.0", forRemoval = true)
 public class PatternsRequestCondition extends AbstractRequestCondition<PatternsRequestCondition> {
 
 	private static final Set<String> EMPTY_PATH_PATTERN = Collections.singleton("");
@@ -202,8 +206,7 @@ public class PatternsRequestCondition extends AbstractRequestCondition<PatternsR
 	 * or {@code null} if no patterns match.
 	 */
 	@Override
-	@Nullable
-	public PatternsRequestCondition getMatchingCondition(HttpServletRequest request) {
+	public @Nullable PatternsRequestCondition getMatchingCondition(HttpServletRequest request) {
 		String lookupPath = UrlPathHelper.getResolvedLookupPath(request);
 		List<String> matches = getMatchingPatterns(lookupPath);
 		return !matches.isEmpty() ? new PatternsRequestCondition(new LinkedHashSet<>(matches), this) : null;
@@ -235,8 +238,7 @@ public class PatternsRequestCondition extends AbstractRequestCondition<PatternsR
 		return matches;
 	}
 
-	@Nullable
-	private String getMatchingPattern(String pattern, String lookupPath) {
+	private @Nullable String getMatchingPattern(String pattern, String lookupPath) {
 		if (pattern.equals(lookupPath)) {
 			return pattern;
 		}
