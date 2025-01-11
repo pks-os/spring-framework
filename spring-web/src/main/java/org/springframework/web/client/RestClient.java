@@ -386,8 +386,8 @@ public interface RestClient {
 		Builder requestInterceptors(Consumer<List<ClientHttpRequestInterceptor>> interceptorsConsumer);
 
 		/**
-		 * Enable buffering of request and response content making it possible to
-		 * read the request and the response body multiple times.
+		 * Enable buffering of request and response, aggregating all content before
+		 * it is sent, and making it possible to read the response body repeatedly.
 		 * @param predicate to determine whether to buffer for the given request
 		 * @return this builder
 		 * @since 7.0
@@ -503,14 +503,14 @@ public interface RestClient {
 		 * <p>If a {@link UriBuilderFactory} was configured for the client (for example,
 		 * with a base URI) it will be used to expand the URI template.
 		 */
-		S uri(String uri, Object... uriVariables);
+		S uri(String uri, @Nullable Object... uriVariables);
 
 		/**
 		 * Specify the URI for the request using a URI template and URI variables.
 		 * <p>If a {@link UriBuilderFactory} was configured for the client (for example,
 		 * with a base URI) it will be used to expand the URI template.
 		 */
-		S uri(String uri, Map<String, ?> uriVariables);
+		S uri(String uri, Map<String, ? extends @Nullable Object> uriVariables);
 
 		/**
 		 * Specify the URI starting with a URI template and finishing off with a
