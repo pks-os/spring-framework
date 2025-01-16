@@ -30,4 +30,8 @@ public abstract class BeanOverrideTestUtils {
 		return BeanOverrideHandler.forTestClass(testClass);
 	}
 
+	public static List<BeanOverrideHandler> findAllHandlers(Class<?> testClass) {
+		return BeanOverrideHandler.findAllHandlers(testClass);
+	}
+
 }
